@@ -96,7 +96,7 @@ def execute_glossary_job(job, progress_callback):
             session.commit()
 
         # Save glossary
-        project.glossary = json.dumps(merged, ensure_ascii=False)
+        project.glossary = merged
         session.commit()
 
 
