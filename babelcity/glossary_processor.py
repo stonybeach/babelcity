@@ -68,7 +68,6 @@ def scan_for_entities(text_chunk, llm_config, existing_glossary=None, pre_transl
         max_tokens=llm_config.get("max_tokens", 8192),
         temperature=llm_config.get("temperature"),
         top_p=llm_config.get("top_p"),
-        retry_attempts=llm_config.get("retry_attempts", 2),
     )
 
     result = extract_json(response)
