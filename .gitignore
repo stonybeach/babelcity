@@ -1,0 +1,11 @@
+assets/external/
+*.py[cod]
+.web
+__pycache__/
+*.db
+.states
+translate_epubs_new.py
+babelcity.db
+node_modules/
+dist/
+.DS_Store
