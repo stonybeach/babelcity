@@ -1,5 +1,7 @@
 """Serve EPUB resources (CSS, images) for IFrame rendering."""
 
+import zlib
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import select
@@ -14,6 +16,14 @@ router = APIRouter(prefix="/resources")
 def get_db():
     with get_session() as session:
         yield session
+
+
+def _try_decompress(content: bytes) -> bytes:
+    """Try zlib decompression; return original bytes if not compressed."""
+    try:
+        return zlib.decompress(content)
+    except Exception:
+        return content
 
 
 @router.get("/volumes/{volume_id}/items/{full_path:path}")
@@ -31,12 +41,15 @@ def get_resource(volume_id: str, full_path: str, db: Session = Depends(get_db)):
     if isinstance(content_bytes, str):
         content_bytes = content_bytes.encode("utf-8")
 
+    # Decompress zlib-compressed content
+    content_bytes = _try_decompress(content_bytes)
+
     media_type = "application/octet-stream"
     fp = full_path.lower()
     if fp.endswith(".css"):
-        media_type = "text/css"
+        media_type = "text/css; charset=utf-8"
     elif fp.endswith(".js"):
-        media_type = "application/javascript"
+        media_type = "application/javascript; charset=utf-8"
     elif fp.endswith(".png"):
         media_type = "image/png"
     elif fp.endswith(".jpg") or fp.endswith(".jpeg"):
@@ -48,9 +61,9 @@ def get_resource(volume_id: str, full_path: str, db: Session = Depends(get_db)):
     elif fp.endswith(".webp"):
         media_type = "image/webp"
     elif fp.endswith(".xhtml") or fp.endswith(".html"):
-        media_type = "application/xhtml+xml"
+        media_type = "application/xhtml+xml; charset=utf-8"
     elif fp.endswith(".xml"):
-        media_type = "application/xml"
+        media_type = "application/xml; charset=utf-8"
     elif fp.endswith(".opf"):
         media_type = "application/oebps-package+xml"
 

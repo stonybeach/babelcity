@@ -1,7 +1,8 @@
 """Glossary read/write per project."""
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_session
@@ -26,7 +27,14 @@ def get_glossary(project_id: str, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    return {"project_id": project_id, "glossary": project.glossary or {}}
+    glossary = project.glossary or {}
+    # Handle double-encoded JSON strings from old job_executors.py
+    if isinstance(glossary, str):
+        try:
+            glossary = json.loads(glossary)
+        except Exception:
+            glossary = {}
+    return {"project_id": project_id, "glossary": glossary}
 
 
 @router.put("/{project_id}/glossary")

@@ -1,8 +1,12 @@
 """Serve chapter content with optional translation and resource path rewriting."""
 
+import os
+import re
 import zlib
 from urllib.parse import quote
 from typing import Optional
+
+import lxml.etree as lxml_etree
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -33,8 +37,6 @@ def rewrite_resource_paths(
     Relative paths in the HTML are resolved against its directory so they
     match the full_path values stored in the DB.
     """
-    import re
-    import os
     pattern = r'(href|src)\s*=\s*["\']([^"\']+)["\']'
 
     # Directory of the current item (e.g. 'EPUB' from 'EPUB/nav.xhtml')
@@ -72,7 +74,20 @@ def get_nav(
         )
     ).scalar_one_or_none()
     if not nav_item:
-        raise HTTPException(404, "Nav not found")
+        chapter_items = db.execute(
+            select(FileItem).where(
+                FileItem.volume_id == volume_id,
+                FileItem.item_type == "Chapter",
+                FileItem.obsolete == False,
+            )
+        ).scalars().all()
+        html_parts = ['<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>']
+        for ch in chapter_items:
+            html_parts.append(
+                f'<p><a href="/chapters/volumes/{volume_id}/items/{ch.id}">{ch.full_path}</a></p>'
+            )
+        html_parts.append('</body></html>')
+        return Response(content=''.join(html_parts), media_type="application/xhtml+xml")
 
     content = nav_item.content
     if isinstance(content, bytes):
@@ -103,6 +118,63 @@ def get_nav(
     return Response(content=content, media_type="application/xhtml+xml")
 
 
+@router.get("/volumes/{volume_id}/toc")
+def get_toc(
+    volume_id: str,
+    db: Session = Depends(get_db),
+):
+    """Build TOC from Chapter items (spine) + Nav name mapping."""
+    all_items = db.execute(
+        select(FileItem).where(
+            FileItem.volume_id == volume_id,
+            FileItem.obsolete == False,
+        )
+    ).scalars().all()
+
+    # Build name_map: full_path -> link text from Nav file
+    nav_item = next((item for item in all_items if item.item_type == "Nav"), None)
+    name_map = {}
+
+    if nav_item:
+        nav_content = nav_item.content
+        if isinstance(nav_content, bytes):
+            nav_content = decompress(nav_content)
+        nav_dir = os.path.dirname(nav_item.full_path)
+        try:
+            nav_tree = lxml_etree.fromstring(nav_content.encode("utf-8"))
+            for link in nav_tree.xpath('//a[@href]'):
+                href = link.get("href", "")
+                link_text = link.text or ""
+                for child in link:
+                    if child.text:
+                        link_text += child.text
+                    for gc in child.iter():
+                        if gc.text:
+                            link_text += gc.text
+                link_text = link_text.strip()
+                if not href:
+                    continue
+                if href.startswith("/"):
+                    full_path = href.split("#")[0]
+                else:
+                    path_only = href.split("#")[0]
+                    full_path = os.path.normpath(os.path.join(nav_dir, path_only)).replace("\\", "/")
+                if link_text:
+                    name_map[full_path] = link_text
+        except Exception:
+            pass
+
+    # Build TOC from Chapter items
+    chapter_items = [item for item in all_items if item.item_type == "Chapter"]
+    toc = []
+    for item in chapter_items:
+        path_no_fragment = item.full_path.split("#")[0]
+        title = name_map.get(path_no_fragment, item.full_path)
+        toc.append({"id": item.id, "full_path": item.full_path, "title": title})
+
+    return {"toc": toc}
+
+
 @router.get("/volumes/{volume_id}/items/{item_path:path}")
 def get_chapter(
     volume_id: str,
@@ -111,12 +183,17 @@ def get_chapter(
     qa_round: int = Query(0),
     db: Session = Depends(get_db),
 ):
-    item = db.execute(
-        select(FileItem).where(
-            FileItem.volume_id == volume_id,
-            FileItem.full_path == item_path,
-        )
-    ).scalar_one_or_none()
+    # Try UUID lookup first (TOC now passes item.id)
+    item = db.get(FileItem, item_path)
+
+    # Fallback: exact full_path match
+    if not item:
+        item = db.execute(
+            select(FileItem).where(
+                FileItem.volume_id == volume_id,
+                FileItem.full_path == item_path,
+            )
+        ).scalar_one_or_none()
 
     # Fallback: nav links may use relative paths (e.g. "episode1.xhtml")
     # while the manifest stores them with a dir prefix (e.g. "EPUB/episode1.xhtml")
@@ -130,7 +207,6 @@ def get_chapter(
 
     # Fallback: match by filename only (e.g. "episode1.xhtml" matches "EPUB/episode1.xhtml")
     if not item:
-        import os
         filename = os.path.basename(item_path)
         item = db.execute(
             select(FileItem).where(

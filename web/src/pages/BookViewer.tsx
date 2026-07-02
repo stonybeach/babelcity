@@ -17,7 +17,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
   const [qaRound, setQaRound] = useState(0)
   const [availableModels, setAvailableModels] = useState<string[]>([''])
   const [availableQARounds, setAvailableQARounds] = useState<number[]>([0])
-  const [chapters, setChapters] = useState<{ id: string, title: string }[]>([])
+  const [chapters, setChapters] = useState<{ id: string, full_path: string, title: string }[]>([])
 
   // Keyboard navigation for chapters
   React.useEffect(() => {
@@ -66,37 +66,32 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
     }
   }, [availTrans, modelType])
 
-  const { data: navHtml, isLoading: navLoading } = useQuery({
-    queryKey: ['nav', volumeId, modelType, qaRound],
-    queryFn: () => chaptersApi.getNav(volumeId, modelType || undefined, qaRound),
+  // Fetch TOC from spine items + nav name mapping (always available)
+  const { data: tocData, isLoading: tocLoading } = useQuery({
+    queryKey: ['toc', volumeId],
+    queryFn: () => chaptersApi.getTOC(volumeId),
     enabled: !!volumeId,
   })
+
+  React.useEffect(() => {
+    if (tocData?.toc) {
+      const extracted: { id: string, title: string }[] = tocData.toc.map((entry: any) => ({
+        id: entry.id,
+        title: entry.title,
+      }))
+      setChapters(extracted)
+      // Auto-select first chapter if none selected
+      if (!selectedChapter && extracted.length > 0) {
+        setSelectedChapter(extracted[0].id)
+      }
+    }
+  }, [tocData])
 
   const { data: chapterHtml, isLoading: chapterLoading } = useQuery({
     queryKey: ['chapter', selectedChapter, modelType, qaRound],
     queryFn: () => selectedChapter ? chaptersApi.getChapter(volumeId, selectedChapter, modelType || undefined, qaRound) : null,
     enabled: !!selectedChapter,
   })
-
-  React.useEffect(() => {
-    if (navHtml) {
-      const parser = new DOMParser()
-      const doc = parser.parseFromString(navHtml, 'application/xhtml+xml')
-      const links = doc.querySelectorAll('a[href]')
-      const extracted: { id: string, title: string }[] = []
-
-      links.forEach(link => {
-        const href = link.getAttribute('href') || ''
-        const title = link.textContent?.trim() || href
-        // Extract item ID from the rewritten URL
-        const match = href.match(/\/items\/([^?]+)/)
-        if (match) {
-          extracted.push({ id: decodeURIComponent(match[1]), title })
-        }
-      })
-      setChapters(extracted)
-    }
-  }, [navHtml])
 
   const downloadEpub = useMutation({
     mutationFn: () => projectsApi.exportEpub(projectId, volume?.volume_number || '1', modelType, qaRound),
@@ -165,7 +160,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
             Table of Contents
           </div>
           <div className="flex-1 overflow-y-auto">
-            {navLoading ? (
+            {tocLoading ? (
               <div className="p-4 text-center text-gray-400">Loading...</div>
             ) : chapters.length === 0 ? (
               <div className="p-4 text-center text-gray-400">No chapters found. Import an EPUB first.</div>
