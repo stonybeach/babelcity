@@ -297,3 +297,11 @@ beautifulsoup4==4.*
 - [x] Chapter lookup (`chapters.py`) — `get_chapter` now tries UUID lookup first (from TOC item.id), then falls back to full_path, relative path, and filename matching
 - [x] API client (`api.ts`) — Added `getTOC` endpoint; frontend uses `chaptersApi.getTOC(volumeId)`
 - [x] Frontend rebuilt (`npx vite build` passes); backend imports clean (`python3 -c "import babelcity.api.chapters"`)
+
+### Phase 10: LLM Streaming + Full Params + Translation/QA Jobs ✅ DONE
+- [x] `llm_handler.py` — `ask_llm()` now uses `stream=True` with `stream_options={"include_usage": True}` to capture token metrics (prompt/completion/total tokens, latency, TPS); falls back to non-streaming on error; added `top_k` parameter in `extra_body`
+- [x] `ask_llm_json()` — Added `top_k` parameter passthrough
+- [x] All `ask_llm`/`ask_llm_json` callers now pass all LLM parameters from `TaskDefinition`: temperature, top_p, min_p, top_k, presence_penalty, frequency_penalty, repetition_penalty
+- [x] `job_executors.py` — `execute_translation_job`: Full implementation with `process_document()`, zlib compression, `ItemTranslation` storage, Nav translation, and complete `llm_config` from `TaskDefinition`
+- [x] `job_executors.py` — `execute_qa_job`: Full implementation with multi-pass QA, `ThreadPoolExecutor` multi-threading (respects `config.threads`), previous round lookup, `ItemTranslation` storage
+- [x] All Python files compile clean; Vite build passes
