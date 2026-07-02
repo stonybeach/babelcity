@@ -11,6 +11,11 @@ def _create_client(base_url, api_key):
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
+def _p(val, default):
+    """Get value or default if None."""
+    return val if val is not None else default
+
+
 def remove_think_tags(text):
     """Remove thinking/reasoning tags. Ported from _remove_think_tags."""
     if '</anth>' in text:
@@ -59,14 +64,16 @@ def extract_json(text):
 def ask_llm(base_url, api_key, model, system_prompt, user_prompt,
             max_tokens=8192, temperature=1.0, top_p=0.92,
             min_p=0.05, repetition_penalty=1.04, frequency_penalty=0.05,
-            presence_penalty=0.0, is_json=False, verbose=False):
-    """Call LLM API. Ported from _ask_llm."""
+            presence_penalty=0.0, top_k=None, is_json=False, verbose=False):
+    """Call LLM API with streaming. Ported from _ask_llm in translate_epubs_new.py."""
     client = _create_client(base_url, api_key)
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
     extra_body = {"min_p": min_p, "repetition_penalty": repetition_penalty}
+    if top_k is not None:
+        extra_body["top_k"] = top_k
 
     try:
         response = client.chat.completions.create(
@@ -78,20 +85,78 @@ def ask_llm(base_url, api_key, model, system_prompt, user_prompt,
             top_p=top_p,
             frequency_penalty=frequency_penalty,
             extra_body=extra_body,
+            stream=True,
+            stream_options={"include_usage": True}
         )
-        content = response.choices[0].message.content or ""
+
+        content = ""
+        first_token_time = None
+        last_token_time = None
+        usage = None
+
+        for chunk in response:
+            if hasattr(chunk, 'choices') and chunk.choices:
+                delta = chunk.choices[0].delta
+                if hasattr(delta, 'content') and delta.content is not None:
+                    content += delta.content
+                    if first_token_time is None:
+                        first_token_time = time.time()
+                    last_token_time = time.time()
+            # Capture usage from the final chunk (stream_options include_usage)
+            if hasattr(chunk, 'usage') and chunk.usage is not None:
+                usage = chunk.usage
+
+        # Log metrics
+        if usage is not None:
+            prompt_tokens = getattr(usage, 'prompt_tokens', 0)
+            completion_tokens = getattr(usage, 'completion_tokens', 0)
+            total_tokens = getattr(usage, 'total_tokens', prompt_tokens + completion_tokens)
+            if first_token_time and last_token_time:
+                latency = last_token_time - first_token_time
+                tps = completion_tokens / latency if latency > 0 else 0
+                print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total | "
+                      f"Latency: {latency:.2f}s | TPS: {tps:.1f}")
+            else:
+                print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total")
+        else:
+            print(f"      [~] No usage metrics returned.")
+
         if verbose:
             print(f"\n      [LLM Response]:\n{content}\n")
         return remove_think_tags(content)
+
     except Exception as e:
-        print(f"      [!] API Communication Error: {e}")
-        return ""
+        print(f"      [!] Streaming failed, falling back to standard request... ({e})")
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                presence_penalty=0.0 if is_json else presence_penalty,
+                top_p=top_p,
+                frequency_penalty=frequency_penalty,
+                extra_body=extra_body,
+            )
+            content = response.choices[0].message.content or ""
+            if hasattr(response, 'usage') and response.usage:
+                usage = response.usage
+                prompt_tokens = getattr(usage, 'prompt_tokens', 0)
+                completion_tokens = getattr(usage, 'completion_tokens', 0)
+                total_tokens = getattr(usage, 'total_tokens', prompt_tokens + completion_tokens)
+                print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total")
+            if verbose:
+                print(f"\n      [LLM Response]:\n{content}\n")
+            return remove_think_tags(content)
+        except Exception as e2:
+            print(f"      [!] API Communication Error (fallback): {e2}")
+            return ""
 
 
 def ask_llm_json(base_url, api_key, model, system_prompt, user_prompt,
-                 max_retries=3, max_tokens=8192, temperature=1.0,
-                 top_p=0.92, min_p=0.05, repetition_penalty=1.04,
-                 frequency_penalty=0.05, presence_penalty=0.0):
+                  max_retries=3, max_tokens=8192, temperature=1.0,
+                  top_p=0.92, min_p=0.05, repetition_penalty=1.04,
+                  frequency_penalty=0.05, presence_penalty=0.0, top_k=None):
     """Call LLM and extract JSON. Ported from _ask_llm_json."""
     for attempt in range(max_retries):
         response = ask_llm(
@@ -100,6 +165,7 @@ def ask_llm_json(base_url, api_key, model, system_prompt, user_prompt,
             max_tokens=max_tokens, temperature=temperature,
             top_p=top_p, min_p=min_p, repetition_penalty=repetition_penalty,
             frequency_penalty=frequency_penalty, presence_penalty=presence_penalty,
+            top_k=top_k,
             is_json=True
         )
         try:

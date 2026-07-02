@@ -66,8 +66,13 @@ def scan_for_entities(text_chunk, llm_config, existing_glossary=None, pre_transl
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         max_tokens=llm_config.get("max_tokens", 8192),
-        temperature=llm_config.get("temperature"),
-        top_p=llm_config.get("top_p"),
+        temperature=llm_config.get("temperature", 1.0),
+        top_p=llm_config.get("top_p", 0.92),
+        min_p=llm_config.get("min_p", 0.05),
+        repetition_penalty=llm_config.get("repetition_penalty", 1.04),
+        frequency_penalty=llm_config.get("frequency_penalty", 0.05),
+        presence_penalty=llm_config.get("presence_penalty", 0.0),
+        top_k=llm_config.get("top_k"),
     )
 
     result = extract_json(response)
