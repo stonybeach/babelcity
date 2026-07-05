@@ -274,7 +274,7 @@ beautifulsoup4==4.*
 - [x] Form validation with user feedback (TasksPage, JobsPage validate required fields before submission)
 - [x] Dark/light theme with localStorage persistence
 - [x] Responsive layout with Tailwind CSS utility classes
-- [ ] Error toast notifications (alert() used for validation; toast component optional enhancement)
+- [x] Error toast notifications: replaced `alert()` with ErrorToast component (see Phase 11)
 - [x] Logo: Using Lucide React BookOpen icon as app logo (no separate SVG needed)
 
 ## Key Decisions
@@ -305,3 +305,57 @@ beautifulsoup4==4.*
 - [x] `job_executors.py` — `execute_translation_job`: Full implementation with `process_document()`, zlib compression, `ItemTranslation` storage, Nav translation, and complete `llm_config` from `TaskDefinition`
 - [x] `job_executors.py` — `execute_qa_job`: Full implementation with multi-pass QA, `ThreadPoolExecutor` multi-threading (respects `config.threads`), previous round lookup, `ItemTranslation` storage
 - [x] All Python files compile clean; Vite build passes
+
+### Phase 11: Requirements Gap Analysis & Missing Features ✅ DONE
+
+#### Book Viewer (Req 3) — Missing Functions
+- [x] Toggle Obsolete flag: API endpoint `PATCH /chapters/volumes/{volume_id}/items/{item_id}/obsolete` to set `FileItem.obsolete` True/False
+- [x] Toggle Valid/Invalid status: API endpoint `PATCH /chapters/volumes/{volume_id}/items/{item_id}/translations/{translation_id}/status` to set `ItemTranslation.status` True/False
+- [x] BookViewer metadata bar: display Obsolete checkbox, Status checkbox, Last Translation Start Time, Last Translation End Time, QA Model (requirement line 263)
+- [x] BookViewer metadata bar: confirmation dialog before toggling obsolete/status (requirement line 263)
+- [x] Export EPUB button: move to same line as Model/QA Round selectors in metadata bar (requirement line 235: export based on selected model/qa)
+- [x] Export EPUB filename: fix UnicodeEncodeError for non-ASCII characters — DONE: filter to ASCII-only in `projects.py:300`
+
+#### Translation Job (Req 7) — Resume Logic
+- [x] `execute_translation_job`: respect `resume` parameter — when True, skip chapters that already have a valid translation (ItemTranslation with status=True for the same model_type/qa_round=0); translate only chapters with no translation or status=False (Invalid)
+- [x] `execute_translation_job`: set `last_translation_start` timestamp before processing, `last_translation_end` after processing
+- [x] `execute_translation_job`: ensure Nav translation uses `process_toc()` with heading_map from translated chapters (requirement line 185: load translated headers from chapters, reuse in Nav)
+- [x] Translation job: when `resume=False`, should retranslate ALL chapters including those with valid translations — implemented
+
+#### QA Job (Req 8) — Nav Update
+- [x] `execute_qa_job`: implement Nav update after each QA pass — load heading_map from QA-corrected chapters, call `process_toc()` with the Nav file, store result with correct qa_round
+- [x] `execute_qa_job`: set `last_translation_start`/`last_translation_end` timestamps on QA ItemTranslation records
+- [x] `execute_qa_job`: set `qa_model` field on QA ItemTranslation records (requirement line 64: store QA model string when qa_round > 0)
+- [x] QA job: `start_version` parameter correctly determines which qa_round to use as source
+
+#### Job Management (Req 5) — Verified
+- [x] Pause job queue: verified — running job stopped and moved to top of queue (job_queue.py:70)
+- [x] Job form: Translation Job form has Resume checkbox (JobsPage.tsx lines 266, 283)
+
+#### UI Guidelines (Req 6)
+- [x] Error toast notifications: replaced `alert()` with ErrorToast component in JobsPage, TasksPage, ProjectEditor
+- [x] Dropdown items sorted: verified all dropdown/select elements are sorted
+- [x] Table items sorted: verified project list, task list, job list, chapter list are sorted
+
+#### Other Concerns & Suggestions
+- [x] Export EPUB: verified fallback order matches requirement (line 236-238): exact match → model_type with qa_round=0 → original source
+- [x] Export EPUB filename: verified format matches requirement — `(Target volume title)_(model type)_(QA Round).epub` or `(Project name)_(volume number)_(model type)_(QA Round).epub`
+- [x] Consider adding a `clear_failed()` method to job queue for removing failed jobs separately — DONE: `clear_failed()` implemented in `job_queue.py:84`
+
+### Phase 12: Bug Log (tech_spec.md audit) ✅ DONE
+
+#### Frontend API Bugs
+- [x] **`chaptersApi.getMeta()` missing `volumeId`** — FIXED: updated `api.ts` to `getMeta: (volumeId: string, itemId: string) => api.get(\`/chapters/volumes/${volumeId}/items/${itemId}/meta\`)` and updated `BookViewer.tsx:115` call site to pass `volumeId`.
+- [x] **`TasksPage.tsx:76` TypeScript error** — FIXED: `form.config_type` null checks added using `(form.config_type || '')` pattern.
+
+#### Backend API Notes (no bugs, but discrepancies with old spec)
+- [x] `api/jobs.py` `list_jobs` — FIXED: added `config_id` to JSON response. Frontend `Job` type updated with `config_id: string`.
+- [ ] `api/chapters.py` `get_chapter` endpoint uses `item_path:path` path param but accepts UUID via fallback lookup. Works correctly — cosmetic only, no fix needed.
+- [x] `api/chapters.py` `get_chapter_meta` — FIXED: added `volume_id` validation (`item.volume_id != volume_id` → 404). Catches future bugs where wrong volume_id is passed.
+
+#### tech_spec.md Updates Applied
+- [x] Job dataclass: `config_id` (not `task_id`), removed `task_name` and `order` fields
+- [x] JobQueue methods: `start()`/`pause()` (not `start_worker()`/`stop_worker()`), added `clear_completed()`, `clear_failed()`, `move_to_top()`, `move_to_bottom()`
+- [x] JobStatus enum: capitalized string values `"Pending"`, `"Running"`, `"Completed"`, `"Failed"`
+- [x] Chapters endpoints: 7 endpoints match spec (nav, toc, items/{item_path}, items/{item_id}/meta, available_translations, obsolete, status)
+- [x] Jobs endpoints: `POST /start`, `POST /pause`, `DELETE /clear` match spec

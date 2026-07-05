@@ -297,7 +297,7 @@ def export_epub(
         raise HTTPException(404, "Volume not found")
 
     filename_base = volume.target_volume_title or f"{project.project_name}_{volume.volume_number}"
-    safe_filename = "".join(c for c in filename_base if c.isalnum() or c in " _-").replace(" ", "_")
+    safe_filename = "".join(c for c in filename_base if c.isascii() and c.isalnum() or c in " _-").replace(" ", "_")
     filename = f"{safe_filename}_{model_type}_{qa_round}.epub"
 
     epub_bytes = epub_handler.export_epub(volume.id, model_type, qa_round, db)

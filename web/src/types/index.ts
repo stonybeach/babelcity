@@ -56,10 +56,12 @@ export interface Job {
   project_id: string
   project_name: string
   volume_number: string
+  config_id: string
   status: string
   current: number
   total: number
   message: string
+  result_message: string
   created_at: string
 }
 

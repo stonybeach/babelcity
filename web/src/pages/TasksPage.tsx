@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tasks as tasksApi } from '../services/api'
 import { TaskDefinition } from '../types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { ErrorToast } from '../components/ErrorToast'
 
 export const TasksPage: React.FC = () => {
   const queryClient = useQueryClient()
@@ -11,6 +12,7 @@ export const TasksPage: React.FC = () => {
   const [editingTask, setEditingTask] = useState<TaskDefinition | null>(null)
   const [form, setForm] = useState<Partial<TaskDefinition>>({})
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
 
   const { data: taskDefs, isLoading } = useQuery({
     queryKey: ['tasks', filterType],
@@ -35,7 +37,7 @@ export const TasksPage: React.FC = () => {
   })
 
   const setDefaultMutation = useMutation({
-    mutationFn: (data: Partial<TaskDefinition>) => tasksApi.update(data.id!, data),
+    mutationFn: (id: string) => tasksApi.setDefault(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   })
 
@@ -55,28 +57,35 @@ export const TasksPage: React.FC = () => {
 
   const handleSave = () => {
     if (!form.config_name || !form.config_name.trim()) {
-      alert('Config Name is required')
+      setErrorToast('Config Name is required')
       return
     }
     if (!form.model || !form.model.trim()) {
-      alert('Model is required')
+      setErrorToast('Model is required')
       return
     }
     if (!form.base_url || !form.base_url.trim()) {
-      alert('Base URL is required')
+      setErrorToast('Base URL is required')
       return
     }
+    const cfgType = (form.config_type || '').toLowerCase()
+    if ((cfgType === 'translation' || cfgType === 'qa') && (!form.model_type || !form.model_type.trim())) {
+      setErrorToast('Model Type is required for ' + (form.config_type || '') + ' tasks')
+      return
+    }
+    const normalizedForm = { ...form, config_type: cfgType === 'qa' ? 'QA' : (form.config_type || '').charAt(0).toUpperCase() + (form.config_type || '').slice(1) }
     if (editingTask) {
-      updateMutation.mutate(form)
+      updateMutation.mutate(normalizedForm)
     } else {
-      createMutation.mutate(form)
+      createMutation.mutate(normalizedForm)
     }
   }
 
   const createTask = (type: string) => {
     setEditingTask(null)
+    const capitalizedType = type === 'qa' ? 'QA' : type.charAt(0).toUpperCase() + type.slice(1)
     setForm({
-      config_type: type.charAt(0).toUpperCase() + type.slice(1),
+      config_type: capitalizedType,
       config_name: '',
       base_url: 'http://localhost:8080/v1',
       api_key: 'not-needed',
@@ -90,6 +99,11 @@ export const TasksPage: React.FC = () => {
       frequency_penalty: 0,
       repetition_penalty: 1.1,
       chunk_size: 12,
+      history: 12,
+      use_mini_glossary: true,
+      synchronize_quotes: true,
+      traditional_chinese: true,
+      threads: type === 'glossary' ? 1 : 1,
       retry_attempts: 2,
     })
   }
@@ -101,7 +115,7 @@ export const TasksPage: React.FC = () => {
   }
 
   const handleSetDefault = (task: TaskDefinition) => {
-    setDefaultMutation.mutate({ id: task.id, is_default: true })
+    setDefaultMutation.mutate(task.id)
   }
 
   const inputClass = "w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
@@ -109,8 +123,11 @@ export const TasksPage: React.FC = () => {
 
   if (editingTask || form.config_type) {
     const isEditing = !!editingTask
+    const isGlossary = form.config_type === 'Glossary'
+    const isQA = form.config_type === 'QA'
     return (
-      <div className="p-6 max-w-4xl mx-auto">
+      <>
+        <div className="p-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{isEditing ? 'Edit Task Definition' : 'New Task Definition'}</h2>
           <div className="flex gap-3">
@@ -129,10 +146,10 @@ export const TasksPage: React.FC = () => {
           </div>
           <div>
             <label className={labelClass}>Config Type</label>
-            <select className={inputClass} value={form.config_type || 'translation'} onChange={e => setForm({ ...form, config_type: e.target.value })}>
-              <option value="glossary">Glossary</option>
-              <option value="translation">Translation</option>
-              <option value="qa">QA</option>
+            <select className={inputClass} value={form.config_type || 'Translation'} onChange={e => setForm({ ...form, config_type: e.target.value })}>
+              <option value="Glossary">Glossary</option>
+              <option value="Translation">Translation</option>
+              <option value="QA">QA</option>
             </select>
           </div>
           <div>
@@ -185,11 +202,11 @@ export const TasksPage: React.FC = () => {
           </div>
           <div>
             <label className={labelClass}>History</label>
-            <input className={inputClass} type="number" value={form.history ?? ''} onChange={e => setForm({ ...form, history: e.target.value ? parseInt(e.target.value) : null })} />
+            <input className={inputClass} type="number" value={form.history ?? ''} disabled={isGlossary || isQA} onChange={e => setForm({ ...form, history: e.target.value ? parseInt(e.target.value) : null })} />
           </div>
           <div>
             <label className={labelClass}>Threads</label>
-            <input className={inputClass} type="number" value={form.threads || 1} onChange={e => setForm({ ...form, threads: parseInt(e.target.value) || 1 })} />
+            <input className={inputClass} type="number" value={isGlossary ? 1 : (form.threads || 1)} disabled={isGlossary} onChange={e => setForm({ ...form, threads: parseInt(e.target.value) || 1 })} />
           </div>
           <div>
             <label className={labelClass}>Retry Attempts</label>
@@ -197,14 +214,14 @@ export const TasksPage: React.FC = () => {
           </div>
           <div>
             <label className={labelClass}>Model Type</label>
-            <input className={inputClass} value={form.model_type || ''} onChange={e => setForm({ ...form, model_type: e.target.value })} />
+            <input className={inputClass} value={form.model_type || ''} disabled={isGlossary} onChange={e => setForm({ ...form, model_type: e.target.value })} />
           </div>
           <div className="col-span-2">
             <label className={labelClass}>Override System Prompt</label>
-            <textarea className={inputClass} rows={3} value={form.override_system_prompt || ''} onChange={e => setForm({ ...form, override_system_prompt: e.target.value || null })} />
+            <textarea className={inputClass} rows={3} value={form.override_system_prompt || ''} disabled onChange={e => setForm({ ...form, override_system_prompt: e.target.value || null })} />
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" checked={!!form.use_mini_glossary} onChange={e => setForm({ ...form, use_mini_glossary: e.target.checked })} />
+            <input type="checkbox" checked={!!form.use_mini_glossary} disabled={isGlossary} onChange={e => setForm({ ...form, use_mini_glossary: e.target.checked })} />
             <label className="text-sm text-gray-700 dark:text-gray-300">Use Mini Glossary</label>
           </div>
           <div className="flex items-center gap-2">
@@ -217,6 +234,8 @@ export const TasksPage: React.FC = () => {
           </div>
         </div>
       </div>
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
+    </>
     )
   }
 
@@ -300,6 +319,8 @@ export const TasksPage: React.FC = () => {
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm(null)}
       />
+
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
     </div>
   )
 }

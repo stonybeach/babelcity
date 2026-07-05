@@ -173,7 +173,7 @@ def apply_translations_to_chunk(chunk, zh_batch, local_heading_map=None):
 
         finalized_zh = None
         if zh:
-            finalized_zh = finalize_text(zh, original_txt, True)
+            finalized_zh = finalize_text(zh, original_txt, trad_chinese)
             new_tag.text = finalized_zh if finalized_zh else original_txt
         else:
             new_tag.text = original_txt
@@ -215,6 +215,32 @@ def process_document(content, glossary, llm_config, resume=False):
     sync_quotes_enabled = llm_config.get("synchronize_quotes", True)
     trad_chinese = llm_config.get("traditional_chinese", True)
 
+    # Pass trad_chinese to apply_translations_to_chunk via closure
+    original_apply = apply_translations_to_chunk
+    def apply_with_config(chunk, zh_batch, heading_map):
+        for (tag, original_txt), zh in zip(chunk, zh_batch):
+            current_style = tag.get('style', '')
+            tag.set('style', f"{current_style}; opacity: 0.4;".strip('; '))
+
+            new_tag = etree.Element(tag.tag)
+
+            finalized_zh = None
+            if zh:
+                finalized_zh = finalize_text(zh, original_txt, trad_chinese)
+                new_tag.text = finalized_zh if finalized_zh else original_txt
+            else:
+                new_tag.text = original_txt
+
+            if heading_map is not None:
+                tag_name = tag.tag.split('}')[-1].lower()
+                if tag_name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                    clean_orig = original_txt.strip()
+                    if clean_orig and has_japanese(clean_orig):
+                        heading_map[clean_orig] = new_tag.text.strip()
+
+            parent = tag.getparent()
+            parent.insert(parent.index(tag) + 1, new_tag)
+
     # Override finalize_text behavior via config
     previous_translations = []
     chunks = [valid_tags[i:i+chunk_size] for i in range(0, len(valid_tags), chunk_size)]
@@ -234,7 +260,7 @@ def process_document(content, glossary, llm_config, resume=False):
                 history_count = llm_config.get("history", 5)
                 previous_translations = valid_zh[-history_count:]
 
-        apply_translations_to_chunk(chunk, zh_batch, local_heading_map)
+        apply_with_config(chunk, zh_batch, local_heading_map)
 
     modified_xml = serialize_xml(tree)
     return modified_xml, local_heading_map

@@ -47,7 +47,11 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Projects</h2>
+      </div>
+
+      <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"

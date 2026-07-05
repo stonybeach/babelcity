@@ -7,7 +7,7 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
 # Tech Stack
 
 - Python 3.11 (ensure compatibility with newer versions)
-- Reflex (reflex-dev/reflex) for Web UI
+- React and Tailwind CSS for Web UI, with a FastAPI backend
 - SQLite for database
 - Ensure compatibility with Apple Silicon (MacBook Pro)
 
@@ -115,24 +115,30 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
    - Update Book Volume in a Project (modify the attributes or upload a new version of the EPUB)
    - Remove a Book Volume in a Project ("Light novel" type only)
    - Remove an existing Project (warn and ask for confirmation before action)
+
 2. Glossary Editing
    - Browse the glossary table
    - Modify an existing glossary entry
    - Add a new entry
    - Remove an entry
    - Save the updated glossary table
+
 3. Book Viewer
    - Choose Project, Book Volume, QA Round and either the original language or a Model type to start
    - Browse the table of content for a list of chapters
+     - The list of chapters should be created from the spine of the OPF file
+     - For the chapter titles, please check the items in the Nav file first. For each link "a" item in the Nav file, convert the "href" into absolute path using the path name of the "Nav" file first if necessary. Then compare the absolute path of the "href" to the item "href" in the OPF for that chapter. If they match, then use the link text of the "a" item as the chapter title for display.
    - Display the source chapters or the translated chapters on the web UI in an iFrame
    - Toggle a file item as True/False for Obsolete 
    - Toggle a translated chapter as Valid/Invalid
    - Download the selected book as an EPUB file
+
 4. Task Definition Management
    - For each type of task definition:
      - Create a new definition
      - Modify an existing definition
      - Default a definition
+
 5. Job Management
    - View the statuses and progress of the pending, running and finished jobs
    - Start the job queue. If the job queue is started, it will start listening for new jobs.
@@ -141,6 +147,7 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
    - Modify the order of pending jobs in the job queue (move up, move down, move to top and move to bottom)
    - Pause the job queue. The running job will be stopped and moved to the top of the job queue.
    - Remove a finished job from the job status list, or remove all finished jobs
+
 6. Add Glossary Task to Job Queue
    - Parameters
      - Project: specify the Project 
@@ -159,6 +166,8 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
      - Obsolete file items are excluded.
    - Output
      - The updated glossary table will be saved in the Project table.
+     - If there is an existing glossary table, the old content is overwritten.
+
 7. Add Translation Task to Job Queue
    - Parameters
      - Project: specify the Project 
@@ -177,6 +186,8 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
      - Obsolete file items are excluded.
    - Output
      - The results are stored in the Item_Translation table with QA Round = 0.
+     - If there is existing content with the same QA Round, the old content is overwritten.
+
 8. Add QA Task to Job Queue
    - Parameters
      - Project: specify the Project 
@@ -195,18 +206,22 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
      - Obsolete file items are excluded.
    - Output
      - The results are stored in the Item_Translation table with QA Round > 0 (starting from Start version + 1).
+     - If there is existing content with the same QA Round, the old content is overwritten.
+
 9. Import EPUB
    - Parameters
      - Project: specify the Project 
      - Book Volume: specify the Volume number of the Book Volume to upload. For a "Web Novel" project, the volume number will be always "1".
      - EPUB: the file to upload
    - Process
-     - If the Book Volume does not have any File Items, *all* the files in the uploaded EPUB file are extracted and stored in the File_Item table, including the "Chapter", "Nav" and other "Resource" like CSS, cover image, metadata files, OPF, etc.
+     - Create a File Item for every file in the uploaded EPUB file, including the container.xml file and the OPF file.
+     - If the Book Volume does not have any File Items, *all* the files in the uploaded EPUB file are extracted and stored in the File_Item table, including the "Chapter", "Nav" and other "Resource" like CSS, cover image, metadata files, container.xml, OPF, etc.
      - If there are already existing File Items, then the existing File Items with the same Full path will have the contents replaced. The new files will be added.
      - If an existing File_Item is not included in the uploaded EPUB, then it is marked as Obsolete = True.
      - There should be only one "Nav" in the manifest of the EPUB. However, if it is missing, but we can find a file with a name like nav.xhtml or toc.xhtml or with a media type of application/x-dtbncx+xml, then we will use it as the "Nav". If we cannot find a single "Nav", the import should be rejected.
    - Output
      - All the files in the uploaded EPUB are stored in the File_Item table.
+
 10. Export EPUB
    - Parameters
      - Project: specify the Project 
@@ -285,7 +300,7 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
      - Volume Number
      - Job Status: Running, Completed, or Pending
      - Progress: if the Job Status is Running, show the completed chapters / total chapters.
-     - Buttons: "Up" (with a up icon), "Down" (with a down icon), "Top" (with a top icon), "Bottom" (with a bottom icon), "Repeat" (with a repeat icon) and "Delete" (with a trash can icon). The Up/Down/Top/Bottom buttons are only available for Pending Jobs only. The Report button is only available for Completed Jobs only.
+     - Buttons: "Up" (with a up icon), "Down" (with a down icon), "Top" (with a top icon), "Bottom" (with a bottom icon), "Repeat" (with a repeat icon) and "Delete" (with a trash can icon). The Up/Down/Top/Bottom buttons are only available for Pending Jobs only. The Report button is only available for Completed and Failed Jobs only.
 6. Other general guidelines
    - When dangerous or irreversible functions are performed, the user should be asked for confirmation.
    - Meaningful error messages should be returned if the process cannot proceed as expected.
@@ -296,12 +311,12 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
 
 # Workflow
 
-Read the provided PoC python code (translate_epubs_new.py) to understand the detailed logic but treat is as reference only, Generate the task list, provide the implementation plan, build the files, handle dependencies locally, and run the app to verify the UI functionality.
+Read the provided PoC python code (@translate_epubs_new.py) to understand the detailed logic but treat is as reference only, Generate the task list, provide the implementation plan, build the files, handle dependencies locally, and run the app to verify the UI functionality.
 
 ## Appendix A: Structural & Architectural Constraints
 
 1. **Backend & Backend Alignment:**
-   - The new application should not be a wrapper around the provide translate_epubs_new.py script. Rather, it should copy and enhance the following applicable functions and integrate within the new application. 
+   - The new application should not be a wrapper around the provide @translate_epubs_new.py script. Rather, it should copy and enhance the following applicable functions and integrate within the new application. 
      - _build_mini_glossary: create a mini-glossary using a subset of the global glossary which only contains words given in the given text
      - _remove_think_tags: remove the thinking context from the given text to prevent reasoning artifacts from leaking into final outputs.
      - _sync_quotes: synchronize the quote and brackets from the source text to the translated text
@@ -322,9 +337,9 @@ Read the provided PoC python code (translate_epubs_new.py) to understand the det
      - _process_toc: translate a table of content (Nav) file
      - _process_document: translate a chapter of the novel
      - _process_qa_document: QA a chapter of the novel
-   - Please use the Chinese system and user prompts from the provided translate_epubs_new.py script in the new application. Although we want to allow the user to override the system prompts later, at the moment please do not implement this yet. Just leave the fields for override system prompts empty and unused.
-   - The provided translate_epubs_new.py script was heavily hardcoded to be used for Japanese to Chinese translation. For now, all the special logic related to the handling of Japanese should still be retained and enabled by default in the new application.
-   - Specifically, ensure the background worker ports the exact behavior of the following algorithmic loops from `translate_epubs_new.py`:
+   - Please use the Chinese system and user prompts from the provided @translate_epubs_new.py script in the new application. Although we want to allow the user to override the system prompts later, at the moment please do not implement this yet. Just leave the fields for override system prompts empty and unused.
+   - The provided @translate_epubs_new.py script was heavily hardcoded to be used for Japanese to Chinese translation. For now, all the special logic related to the handling of Japanese should still be retained and enabled by default in the new application.
+   - Specifically, ensure the background worker ports the exact behavior of the following algorithmic loops from `@translate_epubs_new.py`:
      * Text Chunking & Sliding Context Window: Match how paragraphs are grouped by `chunk_size` and how the `history` parameter appends previous blocks as context.
      * Delimiter & Paragraph Recovery: Port the exact validation checks that verify if the LLM output matches the expected input paragraph count. Preserve the fallback routine that switches to line-by-line translation if multiple recovery attempts fail.
    - No need to implement resolve_contextual_names. This function is not needed as it is not too useful.
@@ -339,3 +354,6 @@ Read the provided PoC python code (translate_epubs_new.py) to understand the det
    - Before installing any dependencies or generating code, create a dedicated Python 3.11 virtual environment named `.venv` in the project root directory: `python3.11 -m venv .venv`.
    - All subsequent library installations, testing scripts, and database initialization tools MUST explicitly target this virtual environment's executables directly via `./.venv/bin/pip` and `./.venv/bin/python`. Do not rely on loose shell activation hooks.
    - Generate a strict `requirements.txt` file containing pinned dependencies. 
+
+2. **Testing Database**
+   - Do not use the main database for testing. Create a separate temporary database for testing.

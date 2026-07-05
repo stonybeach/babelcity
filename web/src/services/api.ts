@@ -30,7 +30,7 @@ export const projects = {
 }
 
 export const tasks = {
-  list: (type?: string) => api.get('/tasks', { params: { type } }).then(r => r.data),
+  list: (type?: string) => api.get('/tasks', { params: { task_type: type } }).then(r => r.data),
   create: (data: any) => api.post('/tasks', data).then(r => r.data),
   update: (id: string, data: any) => api.put(`/tasks/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}`).then(r => r.data),
@@ -63,9 +63,13 @@ export const chapters = {
     api.get(`/chapters/volumes/${volumeId}/toc`).then(r => r.data),
   getChapter: (volumeId: string, itemId: string, modelType?: string, qaRound: number = 0) =>
     api.get(`/chapters/volumes/${volumeId}/items/${itemId}`, { params: { model_type: modelType, qa_round: qaRound } }).then(r => r.data),
-  getMeta: (itemId: string) => api.get(`/chapters/volumes/items/${itemId}/meta`).then(r => r.data),
+  getMeta: (volumeId: string, itemId: string) => api.get(`/chapters/volumes/${volumeId}/items/${itemId}/meta`).then(r => r.data),
   availableTranslations: (volumeId: string) =>
     api.get(`/chapters/volumes/${volumeId}/available_translations`).then(r => r.data),
+  toggleObsolete: (volumeId: string, itemId: string) =>
+    api.patch(`/chapters/volumes/${volumeId}/items/${itemId}/obsolete`).then(r => r.data),
+  toggleTranslationStatus: (volumeId: string, itemId: string, translationId: string) =>
+    api.patch(`/chapters/volumes/${volumeId}/items/${itemId}/translations/${translationId}/status`).then(r => r.data),
 }
 
 export default api

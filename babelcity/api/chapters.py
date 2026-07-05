@@ -141,8 +141,9 @@ def get_toc(
             nav_content = decompress(nav_content)
         nav_dir = os.path.dirname(nav_item.full_path)
         try:
-            nav_tree = lxml_etree.fromstring(nav_content.encode("utf-8"))
-            for link in nav_tree.xpath('//a[@href]'):
+            nav_tree = lxml_etree.fromstring(nav_content if isinstance(nav_content, bytes) else nav_content.encode("utf-8"))
+            ns = {'h': 'http://www.w3.org/1999/xhtml'}
+            for link in nav_tree.xpath('//h:a[@href]', namespaces=ns) or nav_tree.xpath('//a[@href]'):
                 href = link.get("href", "")
                 link_text = link.text or ""
                 for child in link:
@@ -248,10 +249,12 @@ def get_chapter(
 
 
 @router.get("/volumes/{volume_id}/items/{item_id}/meta")
-def get_chapter_meta(item_id: str, db: Session = Depends(get_db)):
+def get_chapter_meta(volume_id: str, item_id: str, db: Session = Depends(get_db)):
     item = db.get(FileItem, item_id)
     if not item:
         raise HTTPException(404, "Chapter not found")
+    if item.volume_id != volume_id:
+        raise HTTPException(404, "Item not found in this volume")
 
     translations = db.execute(
         select(ItemTranslation).where(ItemTranslation.item_id == item_id)
@@ -268,6 +271,10 @@ def get_chapter_meta(item_id: str, db: Session = Depends(get_db)):
                 "id": t.id,
                 "model_type": t.model_type,
                 "qa_round": t.qa_round,
+                "status": t.status,
+                "last_translation_start": t.last_translation_start.isoformat() if t.last_translation_start else None,
+                "last_translation_end": t.last_translation_end.isoformat() if t.last_translation_end else None,
+                "qa_model": t.qa_model,
             }
             for t in translations
         ],
@@ -294,3 +301,26 @@ def get_available_translations(volume_id: str, db: Session = Depends(get_db)):
     for v in result.values():
         v.sort()
     return {"available": result}
+
+
+@router.patch("/volumes/{volume_id}/items/{item_id}/obsolete")
+def toggle_obsolete(volume_id: str, item_id: str, db: Session = Depends(get_db)):
+    item = db.get(FileItem, item_id)
+    if not item or item.volume_id != volume_id:
+        raise HTTPException(404, "Item not found")
+    item.obsolete = not item.obsolete
+    db.commit()
+    return {"obsolete": item.obsolete}
+
+
+@router.patch("/volumes/{volume_id}/items/{item_id}/translations/{translation_id}/status")
+def toggle_translation_status(volume_id: str, item_id: str, translation_id: str, db: Session = Depends(get_db)):
+    translation = db.get(ItemTranslation, translation_id)
+    if not translation:
+        raise HTTPException(404, "Translation not found")
+    item = db.get(FileItem, item_id)
+    if not item or item.volume_id != volume_id:
+        raise HTTPException(404, "Item not found")
+    translation.status = not translation.status
+    db.commit()
+    return {"status": translation.status}

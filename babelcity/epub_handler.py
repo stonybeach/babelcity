@@ -5,6 +5,7 @@ import os
 import re
 import zipfile
 import zlib
+import uuid
 from xml.etree import ElementTree as ET
 
 import lxml.etree as lxml_etree
@@ -75,13 +76,13 @@ def get_epub_metadata(zip_file):
         if idref and idref in manifest:
             spine.append(manifest[idref]["href"])
 
-    return manifest, spine
+    return manifest, spine, opf_path
 
 
 def select_nav_file(manifest):
     """Select single Nav file from manifest entries.
 
-    Priority: nav.xhtml > toc.xhtml > first entry with property='nav'.
+    Priority: property='nav' > nav.xhtml > toc.xhtml.
     Returns (nav_id, nav_href) or (None, None).
     """
     nav_candidates = []
@@ -103,13 +104,13 @@ def select_nav_file(manifest):
         elif basename == "toc.xhtml":
             toc_xhtml = (item_id, href)
 
-    # Priority selection
+    # Priority selection: property='nav' > nav.xhtml > toc.xhtml
+    if nav_candidates:
+        return nav_candidates[0]
     if nav_xhtml:
         return nav_xhtml
     if toc_xhtml:
         return toc_xhtml
-    if nav_candidates:
-        return nav_candidates[0]
 
     return None, None
 
@@ -138,6 +139,7 @@ def import_epub(volume_id, file_bytes, session):
     Returns list of created FileItem IDs.
     """
     from .models import FileItem
+    import uuid
 
     # Mark existing items as obsolete
     existing_items = session.query(FileItem).filter_by(volume_id=volume_id).all()
@@ -145,7 +147,7 @@ def import_epub(volume_id, file_bytes, session):
         item.obsolete = True
 
     with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as zfile:
-        manifest, spine = get_epub_metadata(zfile)
+        manifest, spine, opf_path = get_epub_metadata(zfile)
         nav_id, nav_href = select_nav_file(manifest)
 
         created_ids = []
@@ -182,6 +184,43 @@ def import_epub(volume_id, file_bytes, session):
                 session.add(new_item)
                 created_ids.append(new_item.id)
 
+        # Store structural files not in manifest: META-INF/container.xml and OPF file
+        structural_files = [("META-INF/container.xml", "Resource")]
+        if opf_path:
+            structural_files.append((opf_path, "Resource"))
+        for struct_path, struct_type in structural_files:
+            # Skip if already in manifest
+            if any(info["href"] == struct_path for info in manifest.values()):
+                continue
+
+            try:
+                struct_content = zfile.read(struct_path)
+                struct_compressed = zlib.compress(struct_content)
+
+                struct_existing = session.query(FileItem).filter_by(
+                    volume_id=volume_id, full_path=struct_path
+                ).first()
+
+                if struct_existing:
+                    struct_existing.content = struct_compressed
+                    struct_existing.obsolete = False
+                    struct_existing.item_type = struct_type
+                    created_ids.append(struct_existing.id)
+                else:
+                    struct_item = FileItem(
+                        id=str(uuid.uuid4()),
+                        volume_id=volume_id,
+                        full_path=struct_path,
+                        content=struct_compressed,
+                        item_type=struct_type,
+                        glossary_scanned=False,
+                        obsolete=False,
+                    )
+                    session.add(struct_item)
+                    created_ids.append(struct_item.id)
+            except Exception:
+                pass  # Structural file not found in archive; ignore
+
     session.commit()
     return created_ids
 
@@ -200,6 +239,18 @@ def export_epub(volume_id, model_type, qa_round, session):
     items = session.query(FileItem).filter_by(
         volume_id=volume_id, obsolete=False
     ).all()
+
+    # Also include all Resource items (even if obsolete) for META-INF/container.xml, OPF, etc.
+    resource_items = session.query(FileItem).filter_by(
+        volume_id=volume_id, item_type="Resource"
+    ).all()
+
+    # Combine and deduplicate by full_path (non-obsolete takes precedence)
+    seen = {item.full_path: item for item in items}
+    for item in resource_items:
+        if item.full_path not in seen:
+            seen[item.full_path] = item
+    items = list(seen.values())
 
     # Build output buffer
     output = io.BytesIO()

@@ -1,5 +1,5 @@
 import React from 'react'
-import { BookOpen, Settings, ListTodo, Sun, Moon } from 'lucide-react'
+import { BookOpen, Wrench, ListTodo, Sun, Moon } from 'lucide-react'
 import { useTheme } from './ThemeProvider'
 
 type Tab = 'projects' | 'tasks' | 'jobs'
@@ -14,7 +14,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
 
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: 'projects', label: 'Projects', icon: BookOpen },
-    { key: 'tasks', label: 'Tasks', icon: Settings },
+    { key: 'tasks', label: 'Tasks', icon: Wrench },
     { key: 'jobs', label: 'Jobs', icon: ListTodo },
   ]
 

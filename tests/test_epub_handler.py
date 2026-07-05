@@ -82,7 +82,7 @@ class TestGetEpubMetadata(unittest.TestCase):
     def test_book_epub(self):
         epub_path = os.path.join(os.path.dirname(__file__), '..', 'book.epub')
         with zipfile.ZipFile(epub_path, 'r') as zfile:
-            manifest, spine = get_epub_metadata(zfile)
+            manifest, spine, opf_path = get_epub_metadata(zfile)
 
         self.assertIn("nav.xhtml", manifest)
         self.assertIn("episode1.xhtml", manifest)

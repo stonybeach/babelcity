@@ -61,6 +61,7 @@ def list_jobs(status: Optional[str] = None, db: Session = Depends(get_db)):
             "project_id": j.project_id,
             "project_name": j.project_name,
             "volume_number": j.volume_number,
+            "config_id": j.config_id,
             "status": j.status.value,
             "current": j.progress_completed,
             "total": j.progress_total,
@@ -151,6 +152,8 @@ def remove_job(job_id: str):
 def remove_all_jobs(status: str = "pending"):
     if status == "completed":
         job_queue.clear_completed()
+    elif status == "failed":
+        job_queue.clear_failed()
     else:
         job_queue.clear_pending()
     return {"message": f"All {status} jobs removed"}

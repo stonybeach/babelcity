@@ -75,6 +75,7 @@ def ask_llm(base_url, api_key, model, system_prompt, user_prompt,
     if top_k is not None:
         extra_body["top_k"] = top_k
 
+    start_time = time.time()
     try:
         response = client.chat.completions.create(
             model=model,
@@ -91,33 +92,38 @@ def ask_llm(base_url, api_key, model, system_prompt, user_prompt,
 
         content = ""
         first_token_time = None
-        last_token_time = None
         usage = None
 
         for chunk in response:
+            # Record first_token_time on first chunk received (match PoC logic)
+            if first_token_time is None:
+                first_token_time = time.time()
             if hasattr(chunk, 'choices') and chunk.choices:
                 delta = chunk.choices[0].delta
                 if hasattr(delta, 'content') and delta.content is not None:
                     content += delta.content
-                    if first_token_time is None:
-                        first_token_time = time.time()
-                    last_token_time = time.time()
             # Capture usage from the final chunk (stream_options include_usage)
             if hasattr(chunk, 'usage') and chunk.usage is not None:
                 usage = chunk.usage
 
-        # Log metrics
-        if usage is not None:
+        end_time = time.time()
+
+        # Log metrics (match PoC _ask_llm logic: separate prefill vs generation TPS)
+        if usage is not None and first_token_time is not None:
             prompt_tokens = getattr(usage, 'prompt_tokens', 0)
             completion_tokens = getattr(usage, 'completion_tokens', 0)
             total_tokens = getattr(usage, 'total_tokens', prompt_tokens + completion_tokens)
-            if first_token_time and last_token_time:
-                latency = last_token_time - first_token_time
-                tps = completion_tokens / latency if latency > 0 else 0
-                print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total | "
-                      f"Latency: {latency:.2f}s | TPS: {tps:.1f}")
-            else:
-                print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total")
+            prefill_time = first_token_time - start_time
+            gen_time = end_time - first_token_time
+            prefill_tps = prompt_tokens / prefill_time if prefill_time > 0 else 0
+            gen_tps = completion_tokens / gen_time if gen_time > 0 else 0
+            print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total | "
+                  f"Prefill: {prefill_tps:.1f} t/s | Generation: {gen_tps:.1f} t/s")
+        elif usage is not None:
+            prompt_tokens = getattr(usage, 'prompt_tokens', 0)
+            completion_tokens = getattr(usage, 'completion_tokens', 0)
+            total_tokens = getattr(usage, 'total_tokens', prompt_tokens + completion_tokens)
+            print(f"      [~] Tokens: {prompt_tokens} in / {completion_tokens} out / {total_tokens} total")
         else:
             print(f"      [~] No usage metrics returned.")
 

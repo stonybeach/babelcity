@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Upload, Eye, X, BookOpen, Check } from 'lucide-re
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projects as projectsApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { ErrorToast } from '../components/ErrorToast'
 import { type Project } from '../types'
 
 interface ProjectEditorProps {
@@ -19,6 +20,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [deleteVolumeConfirm, setDeleteVolumeConfirm] = useState<string | null>(null)
   const [volumeForm, setVolumeForm] = useState({ volume_number: '', source_volume_title: '', target_volume_title: '' })
+  const [errorToast, setErrorToast] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState<{ volumeId: string, field: string, value: string } | null>(null)
 
   const { data: project, isLoading } = useQuery({
@@ -76,11 +78,11 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > 50 * 1024 * 1024) {
-        alert('File size exceeds 50MB limit')
+        setErrorToast('File size exceeds 50MB limit')
         return
       }
       if (!file.name.toLowerCase().endsWith('.epub')) {
-        alert('Please select a valid EPUB file')
+        setErrorToast('Please select a valid EPUB file')
         return
       }
       setSelectedFile(file)
@@ -330,7 +332,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                 if (file && file.name.toLowerCase().endsWith('.epub') && file.size <= 50 * 1024 * 1024) {
                   setSelectedFile(file)
                 } else {
-                  alert('Please select a valid EPUB file (max 50MB)')
+                  setErrorToast('Please select a valid EPUB file (max 50MB)')
                 }
               }}
               className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
@@ -410,6 +412,8 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
         onConfirm={() => removeVolume.mutate({ projectId, volumeNumber: deleteVolumeConfirm! })}
         onCancel={() => setDeleteVolumeConfirm(null)}
       />
+
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
     </div>
   )
 }

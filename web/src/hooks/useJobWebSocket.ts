@@ -24,7 +24,7 @@ export function useJobWebSocket(onProgress?: (jobId: string, current: number, to
       if (msg.type === 'progress' && onProgress) {
         onProgress(msg.job_id!, msg.current!, msg.total!)
       }
-      if (msg.type === 'job_list' || msg.type === 'status_change') {
+      if (msg.type === 'job_list' || msg.type === 'status_change' || msg.type === 'progress') {
         queryClient.invalidateQueries({ queryKey: ['jobs'] })
       }
     }

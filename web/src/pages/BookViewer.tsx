@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react'
-import { BookOpen, Download, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { BookOpen, Download, X, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projects as projectsApi, chapters as chaptersApi } from '../services/api'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { type Project } from '../types'
 
 interface BookViewerProps {
@@ -18,6 +19,8 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
   const [availableModels, setAvailableModels] = useState<string[]>([''])
   const [availableQARounds, setAvailableQARounds] = useState<number[]>([0])
   const [chapters, setChapters] = useState<{ id: string, full_path: string, title: string }[]>([])
+  const [meta, setMeta] = useState<any>(null)
+  const [confirmToggle, setConfirmToggle] = useState<{ type: string, label: string } | null>(null)
 
   // Keyboard navigation for chapters
   React.useEffect(() => {
@@ -75,8 +78,9 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
 
   React.useEffect(() => {
     if (tocData?.toc) {
-      const extracted: { id: string, title: string }[] = tocData.toc.map((entry: any) => ({
+      const extracted: { id: string, full_path: string, title: string }[] = tocData.toc.map((entry: any) => ({
         id: entry.id,
+        full_path: entry.full_path || entry.id,
         title: entry.title,
       }))
       setChapters(extracted)
@@ -105,18 +109,40 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
     },
   })
 
+  // Fetch chapter metadata for obsolete/status toggles
+  const { data: chapterMeta } = useQuery({
+    queryKey: ['chapterMeta', selectedChapter],
+    queryFn: () => selectedChapter ? chaptersApi.getMeta(volumeId, selectedChapter) : null,
+    enabled: !!selectedChapter,
+  })
+
+  const toggleObsolete = useMutation({
+    mutationFn: () => {
+      if (!selectedChapter) throw new Error('No chapter selected')
+      return chaptersApi.toggleObsolete(volumeId, selectedChapter)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chapterMeta', selectedChapter] }),
+  })
+
+  const toggleTranslationStatus = useMutation({
+    mutationFn: () => {
+      if (!selectedChapter || !currentTranslation) throw new Error('No translation selected')
+      return chaptersApi.toggleTranslationStatus(volumeId, selectedChapter, currentTranslation.id)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chapterMeta', selectedChapter] }),
+  })
+
+  // Find current translation based on modelType/qaRound
+  const currentTranslation = chapterMeta?.translations?.find((t: any) => {
+    if (!modelType) return t.qa_round === 0
+    return t.model_type === modelType && t.qa_round === qaRound
+  })
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
           ← Back to Projects
-        </button>
-        <button
-          onClick={() => downloadEpub.mutate()}
-          disabled={downloadEpub.isPending}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-        >
-          <Download size={16} /> Download EPUB
         </button>
       </div>
 
@@ -150,7 +176,65 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
             ))}
           </select>
         </div>
+        {currentTranslation && (
+          <div className="flex items-center gap-4 ml-auto">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={chapterMeta?.obsolete || false}
+                onChange={() => {
+                  if (confirmToggle) return
+                  setConfirmToggle({ type: 'obsolete', label: 'Toggle Obsolete' })
+                }}
+                className="rounded"
+              />
+              <span className="text-gray-600 dark:text-gray-400">Obsolete</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={currentTranslation.status}
+                onChange={() => {
+                  if (confirmToggle) return
+                  setConfirmToggle({ type: 'status', label: 'Toggle Translation Status' })
+                }}
+                className="rounded"
+              />
+              <span className="text-gray-600 dark:text-gray-400">Valid</span>
+            </label>
+            {currentTranslation.last_translation_start && (
+              <span className="text-xs text-gray-400">
+                Translated: {new Date(currentTranslation.last_translation_start).toLocaleString()}
+              </span>
+            )}
+            {currentTranslation.qa_model && (
+              <span className="text-xs text-gray-400">QA: {currentTranslation.qa_model}</span>
+            )}
+          </div>
+        )}
+        <button
+          onClick={() => downloadEpub.mutate()}
+          disabled={downloadEpub.isPending}
+          className="flex items-center gap-2 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 text-sm ml-auto"
+        >
+          <Download size={14} /> Export EPUB
+        </button>
       </div>
+
+      {/* Confirm Dialog */}
+      {confirmToggle && (
+        <ConfirmDialog
+          open={!!confirmToggle}
+          title={confirmToggle.label}
+          message={`Are you sure you want to ${confirmToggle.label.toLowerCase()}?`}
+          onConfirm={() => {
+            if (confirmToggle.type === 'obsolete') toggleObsolete.mutate()
+            else toggleTranslationStatus.mutate()
+            setConfirmToggle(null)
+          }}
+          onCancel={() => setConfirmToggle(null)}
+        />
+      )}
 
       {/* Two panels */}
       <div className="flex gap-4 h-[calc(100vh-280px)]">

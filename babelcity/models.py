@@ -1,5 +1,6 @@
 """SQLAlchemy ORM models for Babel City."""
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -15,7 +16,7 @@ class Project(Base):
         CheckConstraint("project_type IN ('Light Novel', 'Web Novel')", name="ck_project_type"),
     )
 
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_type = Column(String(20), nullable=False)
     project_name = Column(String(255), nullable=False)
     source_title = Column(String(255), nullable=False)
@@ -32,7 +33,7 @@ class BookVolume(Base):
         UniqueConstraint("project_id", "volume_number", name="uq_volume_project_number"),
     )
 
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
     volume_number = Column(String(20), nullable=False)
     source_volume_title = Column(String(255), nullable=True)
@@ -48,7 +49,7 @@ class FileItem(Base):
         CheckConstraint("item_type IN ('Chapter', 'Nav', 'Resource')", name="ck_item_type"),
     )
 
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     volume_id = Column(String(36), ForeignKey("book_volumes.id"), nullable=False)
     full_path = Column(String(500), nullable=False)
     content = Column(LargeBinary, nullable=False)
@@ -64,7 +65,7 @@ class ItemTranslation(Base):
         UniqueConstraint("item_id", "model_type", "qa_round", name="uq_translation_item_model_round"),
     )
 
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     item_id = Column(String(36), ForeignKey("file_items.id"), nullable=False)
     model_type = Column(String(100), nullable=False)
     qa_round = Column(Integer, nullable=False, default=0)
@@ -81,7 +82,7 @@ class TaskDefinition(Base):
         CheckConstraint("config_type IN ('Glossary', 'Translation', 'QA')", name="ck_task_type"),
     )
 
-    id = Column(String(36), primary_key=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     config_name = Column(String(100), nullable=False, unique=True)
     config_type = Column(String(20), nullable=False)
     base_url = Column(String(255), nullable=False, default="http://localhost:8080/v1")

@@ -63,15 +63,15 @@ class JobQueue:
 
     def pause(self):
         self._stop_event.set()
-        # Wait for worker to finish
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=5)
-        # Move running job to top of pending
+        # Mark running job as paused so executor can check
         with self._lock:
             if self._running:
                 self._running.status = JobStatus.PENDING
                 self._pending.insert(0, self._running)
                 self._running = None
+        # Wait for worker to finish
+        if self._worker_thread and self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=5)
 
     def remove_job(self, job_id: str):
         with self._lock:
@@ -80,6 +80,10 @@ class JobQueue:
     def clear_pending(self):
         with self._lock:
             self._pending.clear()
+
+    def clear_failed(self):
+        with self._lock:
+            self._completed = [j for j in self._completed if j.status != JobStatus.FAILED]
 
     def move_up(self, job_id: str):
         with self._lock:
@@ -176,6 +180,11 @@ class JobQueue:
                 job.status = JobStatus.COMPLETED
                 logger.info(f"Worker loop: job {job.id} completed successfully.")
             except Exception as e:
+                # Check if paused
+                with self._lock:
+                    if job.status == JobStatus.PENDING:
+                        logger.info(f"Worker loop: job {job.id} was paused, re-queuing.")
+                        return  # Job already moved to pending, don't add to completed
                 job.status = JobStatus.FAILED
                 job.result_message = str(e)
                 logger.error(f"Worker loop: job {job.id} FAILED with error: {e}", exc_info=True)

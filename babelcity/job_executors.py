@@ -69,9 +69,36 @@ def execute_glossary_job(job, progress_callback):
                 ch.glossary_scanned = False
             session.commit()
 
+        # Filter chapters based on resume parameter
+        model_type = config.model_type or config.config_name
+        if resume:
+            # Skip chapters that already have a valid translation for this model
+            filtered_chapters = []
+            for ch in chapters:
+                existing = session.query(ItemTranslation).filter_by(
+                    item_id=ch.id,
+                    model_type=model_type,
+                    qa_round=0,
+                    status=True
+                ).first()
+                if not existing:
+                    filtered_chapters.append(ch)
+            if filtered_chapters:
+                chapters = filtered_chapters
+            else:
+                progress_callback(len(chapters), len(chapters))
+                return
+        # When resume=False, retranslate ALL chapters (no filtering)
+
         # Existing glossary
         import json
-        existing_glossary = json.loads(project.glossary) if project.glossary else {}
+        # Get project glossary (may be dict or JSON string)
+        if project.glossary is None:
+            existing_glossary = {}
+        elif isinstance(project.glossary, dict):
+            existing_glossary = project.glossary
+        else:
+            existing_glossary = json.loads(project.glossary)
 
         merged = dict(existing_glossary)
         total = len(chapters)
@@ -142,8 +169,13 @@ def execute_translation_job(job, progress_callback):
             "threads": config.threads,
         }
 
-        # Get project glossary
-        glossary = json.loads(project.glossary) if project.glossary else {}
+        # Get project glossary (may be dict or JSON string)
+        if project.glossary is None:
+            glossary = {}
+        elif isinstance(project.glossary, dict):
+            glossary = project.glossary
+        else:
+            glossary = json.loads(project.glossary)
 
         # Get chapters
         chapters = session.query(FileItem).filter_by(
@@ -155,32 +187,100 @@ def execute_translation_job(job, progress_callback):
         total = len(chapters)
         completed = 0
         model_type = config.model_type or config.config_name
+        threads = config.threads or 1
 
-        for ch in chapters:
-            # Decompress content
-            content = zlib.decompress(ch.content)
-            text = content.decode("utf-8", errors="replace")
+        progress_callback(0, total)
 
-            # Translate
-            modified_xml, heading_map = process_document(text, glossary, llm_config)
+        if threads > 1:
+            # Multi-threaded translation using ThreadPoolExecutor
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import threading
 
-            if modified_xml:
-                # Compress and save translation
+            completed_counter = threading.atomic(0) if hasattr(threading, 'atomic') else {'value': 0}
+            counter_lock = threading.Lock()
+
+            def process_chapter(ch):
+                from .translation_processor import process_document
                 import zlib
-                compressed = zlib.compress(modified_xml.encode("utf-8"))
+                content = zlib.decompress(ch.content)
+                text = content.decode("utf-8", errors="replace")
+                modified_xml, heading_map = process_document(text, glossary, llm_config)
+                return ch, modified_xml, heading_map
 
-                translation = ItemTranslation(
-                    item_id=ch.id,
-                    volume_id=job.volume_id,
-                    model_type=model_type,
-                    qa_round=0,
-                    content=compressed,
-                )
-                session.add(translation)
-                session.commit()
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                futures = {executor.submit(process_chapter, ch): ch for ch in chapters}
+                for future in as_completed(futures):
+                    ch = futures[future]
+                    try:
+                        _, modified_xml, heading_map = future.result()
+                        if modified_xml:
+                            import zlib
+                            compressed = zlib.compress(modified_xml) if isinstance(modified_xml, bytes) else zlib.compress(modified_xml.encode("utf-8"))
+                            with get_session() as save_session:
+                                existing = save_session.query(ItemTranslation).filter_by(
+                                    item_id=ch.id,
+                                    model_type=model_type,
+                                    qa_round=0,
+                                ).first()
+                                if existing:
+                                    existing.content = compressed
+                                    existing.last_translation_start = datetime.utcnow()
+                                    existing.last_translation_end = datetime.utcnow()
+                                else:
+                                    translation = ItemTranslation(
+                                        item_id=ch.id,
+                                        model_type=model_type,
+                                        qa_round=0,
+                                        content=compressed,
+                                        last_translation_start=datetime.utcnow(),
+                                        last_translation_end=datetime.utcnow(),
+                                    )
+                                    save_session.add(translation)
+                                save_session.commit()
+                    except Exception as e:
+                        print(f"Error translating chapter {ch.full_path}: {e}")
 
-            completed += 1
-            progress_callback(completed, total)
+                    with counter_lock:
+                        completed_counter['value'] += 1
+                        completed = completed_counter['value']
+                    progress_callback(completed, total)
+        else:
+            for ch in chapters:
+                # Decompress content
+                content = zlib.decompress(ch.content)
+                text = content.decode("utf-8", errors="replace")
+
+                # Translate
+                modified_xml, heading_map = process_document(text, glossary, llm_config)
+
+                if modified_xml:
+                    # serialize_xml() returns bytes; compress directly
+                    import zlib
+                    compressed = zlib.compress(modified_xml) if isinstance(modified_xml, bytes) else zlib.compress(modified_xml.encode("utf-8"))
+
+                    existing = session.query(ItemTranslation).filter_by(
+                        item_id=ch.id,
+                        model_type=model_type,
+                        qa_round=0,
+                    ).first()
+                    if existing:
+                        existing.content = compressed
+                        existing.last_translation_start = datetime.utcnow()
+                        existing.last_translation_end = datetime.utcnow()
+                    else:
+                        translation = ItemTranslation(
+                            item_id=ch.id,
+                            model_type=model_type,
+                            qa_round=0,
+                            content=compressed,
+                            last_translation_start=datetime.utcnow(),
+                            last_translation_end=datetime.utcnow(),
+                        )
+                        session.add(translation)
+                    session.commit()
+
+                completed += 1
+                progress_callback(completed, total)
 
         # Translate Nav files
         nav_items = session.query(FileItem).filter_by(
@@ -197,15 +297,26 @@ def execute_translation_job(job, progress_callback):
             modified_nav = process_toc(text, llm_config.get("chunk_size", 12), {}, glossary, llm_config)
 
             if modified_nav:
-                compressed = zlib.compress(modified_nav.encode("utf-8"))
-                translation = ItemTranslation(
+                compressed = zlib.compress(modified_nav) if isinstance(modified_nav, bytes) else zlib.compress(modified_nav.encode("utf-8"))
+                existing = session.query(ItemTranslation).filter_by(
                     item_id=nav.id,
-                    volume_id=job.volume_id,
                     model_type=model_type,
                     qa_round=0,
-                    content=compressed,
-                )
-                session.add(translation)
+                ).first()
+                if existing:
+                    existing.content = compressed
+                    existing.last_translation_start = datetime.utcnow()
+                    existing.last_translation_end = datetime.utcnow()
+                else:
+                    translation = ItemTranslation(
+                        item_id=nav.id,
+                        model_type=model_type,
+                        qa_round=0,
+                        content=compressed,
+                        last_translation_start=datetime.utcnow(),
+                        last_translation_end=datetime.utcnow(),
+                    )
+                    session.add(translation)
                 session.commit()
 
 
@@ -245,8 +356,13 @@ def execute_qa_job(job, progress_callback):
             "threads": config.threads,
         }
 
-        # Get project glossary
-        glossary = json.loads(project.glossary) if project.glossary else {}
+        # Get project glossary (may be dict or JSON string)
+        if project.glossary is None:
+            glossary = {}
+        elif isinstance(project.glossary, dict):
+            glossary = project.glossary
+        else:
+            glossary = json.loads(project.glossary)
 
         start_version = job.params.get("start_version", 0)
         num_passes = job.params.get("num_passes", 1)
@@ -308,7 +424,7 @@ def execute_qa_job(job, progress_callback):
             # Save QA results
             for item_id, modified_xml, heading_map in results:
                 if modified_xml:
-                    compressed = zlib.compress(modified_xml.encode("utf-8"))
+                    compressed = zlib.compress(modified_xml) if isinstance(modified_xml, bytes) else zlib.compress(modified_xml.encode("utf-8"))
                     # Check if translation already exists for this round
                     existing = session.query(ItemTranslation).filter_by(
                         item_id=item_id,
@@ -318,13 +434,18 @@ def execute_qa_job(job, progress_callback):
 
                     if existing:
                         existing.content = compressed
+                        existing.last_translation_start = datetime.utcnow()
+                        existing.last_translation_end = datetime.utcnow()
+                        existing.qa_model = config.model_type or config.config_name
                     else:
                         new_trans = ItemTranslation(
                             item_id=item_id,
-                            volume_id=job.volume_id,
                             model_type=model_type,
                             qa_round=qa_round,
                             content=compressed,
+                            last_translation_start=datetime.utcnow(),
+                            last_translation_end=datetime.utcnow(),
+                            qa_model=config.model_type or config.config_name,
                         )
                         session.add(new_trans)
                     session.commit()
@@ -332,4 +453,41 @@ def execute_qa_job(job, progress_callback):
             # Progress callback after each pass
             progress_callback((pass_idx + 1) * total, num_passes * total)
 
-            # Update Nav after each pass
+            # Update Nav after each QA pass
+            nav_items = session.query(FileItem).filter_by(
+                volume_id=job.volume_id,
+                item_type="Nav",
+                obsolete=False
+            ).all()
+
+            for nav in nav_items:
+                content = zlib.decompress(nav.content)
+                text = content.decode("utf-8", errors="replace")
+
+                from .translation_processor import process_toc
+                modified_nav = process_toc(text, qa_config.get("chunk_size", 12), {}, glossary, qa_config)
+
+                if modified_nav:
+                    compressed_nav = zlib.compress(modified_nav) if isinstance(modified_nav, bytes) else zlib.compress(modified_nav.encode("utf-8"))
+                    existing_nav = session.query(ItemTranslation).filter_by(
+                        item_id=nav.id,
+                        model_type=model_type,
+                        qa_round=qa_round,
+                    ).first()
+                    if existing_nav:
+                        existing_nav.content = compressed_nav
+                        existing_nav.last_translation_start = datetime.utcnow()
+                        existing_nav.last_translation_end = datetime.utcnow()
+                        existing_nav.qa_model = config.model_type or config.config_name
+                    else:
+                        nav_trans = ItemTranslation(
+                            item_id=nav.id,
+                            model_type=model_type,
+                            qa_round=qa_round,
+                            content=compressed_nav,
+                            last_translation_start=datetime.utcnow(),
+                            last_translation_end=datetime.utcnow(),
+                            qa_model=config.model_type or config.config_name,
+                        )
+                        session.add(nav_trans)
+                    session.commit()

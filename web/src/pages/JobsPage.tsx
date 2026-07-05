@@ -3,6 +3,7 @@ import { Plus, Play, Pause, Trash2, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDown
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { jobs as jobsApi, tasks as tasksApi, projects as projectsApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { ErrorToast } from '../components/ErrorToast'
 import { useJobWebSocket } from '../hooks/useJobWebSocket'
 import { type Job, type TaskDefinition, type Project } from '../types'
 
@@ -11,6 +12,7 @@ export const JobsPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false)
   const [formType, setFormType] = useState<'Glossary' | 'Translation' | 'QA'>('Glossary')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
   const [form, setForm] = useState({
     project_id: '', volume_number: '', task_id: '',
     resume: true, add_only: false, pre_translated_terms: '',
@@ -22,7 +24,7 @@ export const JobsPage: React.FC = () => {
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['jobs'],
     queryFn: () => jobsApi.list(),
-    refetchInterval: 5000,
+    refetchInterval: false,
   })
 
   const { data: tasks = [] } = useQuery({
@@ -81,12 +83,16 @@ export const JobsPage: React.FC = () => {
   const handleCreateClick = (type: 'Glossary' | 'Translation' | 'QA') => {
     setFormType(type)
     setShowForm(true)
+    const defaults = (tasks as TaskDefinition[]).filter(t => t.config_type === type && t.is_default)
+    if (defaults.length > 0) {
+      setForm(f => ({ ...f, task_id: defaults[0].id }))
+    }
   }
 
   const handleSubmit = () => {
-    if (!form.project_id) { alert('Please select a project'); return }
-    if (!form.volume_number) { alert('Please select a volume'); return }
-    if (!form.task_id) { alert('Please select a task definition'); return }
+    if (!form.project_id) { setErrorToast('Please select a project'); return }
+    if (!form.volume_number) { setErrorToast('Please select a volume'); return }
+    if (!form.task_id) { setErrorToast('Please select a task definition'); return }
 
     const filteredForm: any = {
       project_id: form.project_id,
@@ -113,7 +119,11 @@ export const JobsPage: React.FC = () => {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Jobs</h2>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <button onClick={() => handleCreateClick('Glossary')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
             <Plus size={16} /> Glossary Job
@@ -310,6 +320,8 @@ export const JobsPage: React.FC = () => {
         onConfirm={() => { if (deleteConfirm) { removeJob.mutate(deleteConfirm); setDeleteConfirm(null) } }}
         onCancel={() => setDeleteConfirm(null)}
       />
+
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
     </div>
   )
 }
