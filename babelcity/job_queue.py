@@ -156,6 +156,18 @@ class JobQueue:
             if self._running and self._running.id == job_id:
                 self._running.progress_completed = completed
                 self._running.progress_total = total
+        try:
+            from .ws import broadcast_progress
+            broadcast_progress(job_id, completed, total)
+        except Exception:
+            pass
+
+    def _broadcast_status(self, job_id: str, status: str):
+        try:
+            from .ws import broadcast_status
+            broadcast_status(job_id, status)
+        except Exception:
+            pass
 
     def worker_loop(self):
         """Background worker loop."""
@@ -172,6 +184,7 @@ class JobQueue:
                 job.status = JobStatus.RUNNING
                 self._running = job
 
+            self._broadcast_status(job.id, job.status.value)
             logger.info(f"Worker loop: starting job {job.id} type={job.job_type} project={job.project_name} volume={job.volume_number}")
 
             # Execute
@@ -188,6 +201,8 @@ class JobQueue:
                 job.status = JobStatus.FAILED
                 job.result_message = str(e)
                 logger.error(f"Worker loop: job {job.id} FAILED with error: {e}", exc_info=True)
+
+            self._broadcast_status(job.id, job.status.value)
 
             # Move to completed
             with self._lock:

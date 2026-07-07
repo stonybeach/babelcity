@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, Play, Pause, Trash2, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine, Repeat, X } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { jobs as jobsApi, tasks as tasksApi, projects as projectsApi } from '../services/api'
+import { jobs as jobsApi, tasks as tasksApi, projects as projectsApi, chapters as chaptersApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
 import { useJobWebSocket } from '../hooks/useJobWebSocket'
@@ -16,7 +16,7 @@ export const JobsPage: React.FC = () => {
   const [form, setForm] = useState({
     project_id: '', volume_number: '', task_id: '',
     resume: true, add_only: false, pre_translated_terms: '',
-    start_version: 0, num_passes: 1,
+    start_version: 0, num_passes: 1, translation_model_type: '',
   })
 
   useJobWebSocket()
@@ -36,6 +36,16 @@ export const JobsPage: React.FC = () => {
     queryKey: ['projects'],
     queryFn: projectsApi.list,
   })
+
+  const selectedProjectData = (projects as Project[]).find((p: Project) => p.id === form.project_id)
+  const selectedVolumeId = selectedProjectData?.volumes?.find((v: any) => v.volume_number === form.volume_number)?.id
+
+  const { data: availableModelsData } = useQuery({
+    queryKey: ['availableTranslations', selectedVolumeId],
+    queryFn: () => selectedVolumeId ? chaptersApi.availableTranslations(selectedVolumeId) : null,
+    enabled: !!selectedVolumeId && formType === 'QA',
+  })
+  const availableModels = availableModelsData?.available ? Object.keys(availableModelsData.available) : []
 
   const startQueue = useMutation({
     mutationFn: () => jobsApi.start(),
@@ -76,7 +86,7 @@ export const JobsPage: React.FC = () => {
   })
 
   const resetForm = () => {
-    setForm({ project_id: '', volume_number: '', task_id: '', resume: true, add_only: false, pre_translated_terms: '', start_version: 0, num_passes: 1 })
+    setForm({ project_id: '', volume_number: '', task_id: '', resume: true, add_only: false, pre_translated_terms: '', start_version: 0, num_passes: 1, translation_model_type: '' })
     setShowForm(false)
   }
 
@@ -108,12 +118,13 @@ export const JobsPage: React.FC = () => {
     } else {
       filteredForm.start_version = form.start_version
       filteredForm.num_passes = form.num_passes
+      filteredForm.translation_model_type = form.translation_model_type
     }
     addJob.mutate({ type: formType, data: filteredForm })
   }
 
   const filteredTasks = (tasks as TaskDefinition[]).filter((t: TaskDefinition) => t.config_type === formType)
-  const selectedProject = (projects as Project[]).find((p: Project) => p.id === form.project_id)
+  const selectedProject = selectedProjectData
 
   if (isLoading) return <div className="p-8 text-center text-gray-500">Loading jobs...</div>
 
@@ -288,6 +299,16 @@ export const JobsPage: React.FC = () => {
               )}
               {formType === 'QA' && (
                 <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Translation Model Type</label>
+                    <select value={form.translation_model_type} onChange={e => setForm(f => ({ ...f, translation_model_type: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                      <option value="">Select model type</option>
+                      {(availableModels || []).sort().map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Version</label>
                     <input type="number" value={form.start_version} onChange={e => setForm(f => ({ ...f, start_version: parseInt(e.target.value) || 0 }))}

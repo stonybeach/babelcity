@@ -69,7 +69,7 @@ def process_qa_document(content, glossary, llm_config):
 
         try:
             import opencc
-            cc_back = opencc.OpenCC('t2s.json')
+            cc_back = opencc.OpenCC('t2s')
             eval_payload = [
                 {"id": str(p['index']), "jp": p['jp'], "zh": cc_back.convert(p['zh'])}
                 for p in chunk

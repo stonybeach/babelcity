@@ -100,7 +100,8 @@ def build_mini_glossary(jp_texts, global_glossary, chapter_abbrevs=None):
 
 def sync_quotes(trans_text, source_text):
     """Synchronize quotes and brackets from source to translation. Ported from _sync_quotes."""
-    QUOTE_CHARS = set("「」【】""''『』《》〖〗\"'‘’")
+    #QUOTE_CHARS = set("「」【】""''『』《》〖〗\"'‘’")
+    QUOTE_CHARS = set("「」【】“”『』《》〖〗\"'‘’")
 
     if not source_text or not trans_text:
         return trans_text, False
@@ -183,14 +184,14 @@ def finalize_text(text, source_text=None, to_traditional=True):
     if to_traditional:
         try:
             import opencc
-            cc = opencc.OpenCC('s2hk.json')
+            cc = opencc.OpenCC('s2hk')
             text = cc.convert(text)
         except Exception:
             pass
     else:
         try:
             import opencc
-            cc = cc = opencc.OpenCC('t2s.json')
+            cc = cc = opencc.OpenCC('t2s')
             text = cc.convert(text)
         except Exception:
             pass

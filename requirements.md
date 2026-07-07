@@ -193,7 +193,8 @@ Build a local Web Novel & EPUB Translation Organizer with a clean GUI.
      - Project: specify the Project 
      - Book Volume: specify the Volume number of the Book Volume to translate
      - Configuation: specify the QA Task Definition to be used
-     - Start version: specify the QA Round to use as the starting point. 0 is the original translated version. Subsequent QA versions will be overwritten.
+     - Translation Model Type: specify the "Model type" of the "Item Translation" that needs QA
+     - Start version: specify the "QA Round" of the "Model Type" of the "Item Translation" to use as the starting point. 0 is the original translated version. Subsequent QA versions will be overwritten.
      - Number of passes: specify how many round of QA to be performed
    - Process
     - Each "Chapter" in the Book Volume is handled individually by a separate thread in the thread pool if the number of threads is more than 1

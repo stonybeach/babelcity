@@ -1,5 +1,6 @@
 """FastAPI application entry point for Babel City."""
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,8 @@ WEB_DIST = Path(__file__).parent.parent / "web" / "dist"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from .ws import set_main_loop
+    set_main_loop(asyncio.get_running_loop())
     yield
 
 

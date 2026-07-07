@@ -176,6 +176,50 @@ def get_toc(
     return {"toc": toc}
 
 
+@router.get("/volumes/{volume_id}/items/{item_id}/meta")
+def get_chapter_meta(volume_id: str, item_id: str, db: Session = Depends(get_db)):
+    item = db.get(FileItem, item_id)
+    if not item:
+        raise HTTPException(404, "Chapter not found")
+    if item.volume_id != volume_id:
+        raise HTTPException(404, "Item not found in this volume")
+
+    translations = db.execute(
+        select(ItemTranslation).where(ItemTranslation.item_id == item_id)
+    ).scalars().all()
+
+    return {
+        "item_id": item.id,
+        "full_path": item.full_path,
+        "item_type": item.item_type,
+        "obsolete": item.obsolete,
+        "glossary_scanned": item.glossary_scanned,
+        "translations": [
+            {
+                "id": t.id,
+                "model_type": t.model_type,
+                "qa_round": t.qa_round,
+                "status": t.status,
+                "last_translation_start": t.last_translation_start.isoformat() if t.last_translation_start else None,
+                "last_translation_end": t.last_translation_end.isoformat() if t.last_translation_end else None,
+                "qa_model": t.qa_model,
+            }
+            for t in translations
+        ],
+    }
+
+
+@router.patch("/volumes/{volume_id}/items/{item_id}/obsolete")
+def toggle_obsolete(volume_id: str, item_id: str, db: Session = Depends(get_db)):
+    item = db.get(FileItem, item_id)
+    if not item or item.volume_id != volume_id:
+        raise HTTPException(404, "Item not found")
+    item.obsolete = not item.obsolete
+    db.commit()
+    return {"obsolete": item.obsolete}
+
+
+
 @router.get("/volumes/{volume_id}/items/{item_path:path}")
 def get_chapter(
     volume_id: str,
@@ -248,38 +292,6 @@ def get_chapter(
     return Response(content=content, media_type="application/xhtml+xml")
 
 
-@router.get("/volumes/{volume_id}/items/{item_id}/meta")
-def get_chapter_meta(volume_id: str, item_id: str, db: Session = Depends(get_db)):
-    item = db.get(FileItem, item_id)
-    if not item:
-        raise HTTPException(404, "Chapter not found")
-    if item.volume_id != volume_id:
-        raise HTTPException(404, "Item not found in this volume")
-
-    translations = db.execute(
-        select(ItemTranslation).where(ItemTranslation.item_id == item_id)
-    ).scalars().all()
-
-    return {
-        "item_id": item.id,
-        "full_path": item.full_path,
-        "item_type": item.item_type,
-        "obsolete": item.obsolete,
-        "glossary_scanned": item.glossary_scanned,
-        "translations": [
-            {
-                "id": t.id,
-                "model_type": t.model_type,
-                "qa_round": t.qa_round,
-                "status": t.status,
-                "last_translation_start": t.last_translation_start.isoformat() if t.last_translation_start else None,
-                "last_translation_end": t.last_translation_end.isoformat() if t.last_translation_end else None,
-                "qa_model": t.qa_model,
-            }
-            for t in translations
-        ],
-    }
-
 
 @router.get("/volumes/{volume_id}/available_translations")
 def get_available_translations(volume_id: str, db: Session = Depends(get_db)):
@@ -301,16 +313,6 @@ def get_available_translations(volume_id: str, db: Session = Depends(get_db)):
     for v in result.values():
         v.sort()
     return {"available": result}
-
-
-@router.patch("/volumes/{volume_id}/items/{item_id}/obsolete")
-def toggle_obsolete(volume_id: str, item_id: str, db: Session = Depends(get_db)):
-    item = db.get(FileItem, item_id)
-    if not item or item.volume_id != volume_id:
-        raise HTTPException(404, "Item not found")
-    item.obsolete = not item.obsolete
-    db.commit()
-    return {"obsolete": item.obsolete}
 
 
 @router.patch("/volumes/{volume_id}/items/{item_id}/translations/{translation_id}/status")

@@ -40,8 +40,8 @@ export interface TaskDefinition {
   history: number | null
   use_mini_glossary: boolean | null
   threads: number
-  synchronize_quotes: boolean | null
-  traditional_chinese: boolean | null
+  synchronize_quotes: boolean
+  traditional_chinese: boolean
   model_type: string | null
   retry_attempts: number
   override_system_prompt: string | null

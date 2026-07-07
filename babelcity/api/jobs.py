@@ -40,6 +40,7 @@ class QAJobCreate(BaseModel):
     project_id: str
     volume_number: str
     task_id: str
+    translation_model_type: str = ""
     start_version: int = 0
     num_passes: int = 1
 
@@ -123,6 +124,7 @@ def add_qa_job(data: QAJobCreate, db: Session = Depends(get_db)):
         params={
             "start_version": data.start_version,
             "num_passes": data.num_passes,
+            "translation_model_type": data.translation_model_type,
         },
     )
     job_queue.add_job(job)

@@ -166,6 +166,7 @@ def execute_translation_job(job, progress_callback):
             "history": config.history,
             "use_mini_glossary": config.use_mini_glossary,
             "traditional_chinese": config.traditional_chinese,
+            "synchronize_quotes": config.synchronize_quotes,
             "threads": config.threads,
         }
 
@@ -353,6 +354,8 @@ def execute_qa_job(job, progress_callback):
             "chunk_size": config.chunk_size,
             "use_mini_glossary": config.use_mini_glossary,
             "traditional_chinese": config.traditional_chinese,
+            "synchronize_quotes": config.synchronize_quotes,
+            "history": config.history,
             "threads": config.threads,
         }
 
@@ -366,19 +369,24 @@ def execute_qa_job(job, progress_callback):
 
         start_version = job.params.get("start_version", 0)
         num_passes = job.params.get("num_passes", 1)
-        model_type = config.model_type or config.config_name
+        translation_model_type = job.params.get("translation_model_type", "")
         threads = config.threads or 1
 
         for pass_idx in range(num_passes):
-            qa_round = start_version + pass_idx
+            qa_round = start_version + pass_idx + 1
 
             # Get chapters that have a translation at the previous QA round
-            prev_round = qa_round - 1 if qa_round > 0 else 0
-            prev_translations = session.query(ItemTranslation).filter_by(
-                volume_id=job.volume_id,
-                model_type=model_type,
-                qa_round=prev_round,
-            ).all()
+            prev_round = qa_round - 1
+            prev_translations = (
+                session.query(ItemTranslation)
+                .join(FileItem, FileItem.id == ItemTranslation.item_id)
+                .filter(
+                    FileItem.volume_id == job.volume_id,
+                    ItemTranslation.model_type == translation_model_type,
+                    ItemTranslation.qa_round == prev_round,
+                )
+                .all()
+            )
 
             if not prev_translations:
                 print(f"      [!] No translations found for qa_round {prev_round}. Skipping pass {pass_idx}.")
@@ -428,7 +436,7 @@ def execute_qa_job(job, progress_callback):
                     # Check if translation already exists for this round
                     existing = session.query(ItemTranslation).filter_by(
                         item_id=item_id,
-                        model_type=model_type,
+                        model_type=translation_model_type,
                         qa_round=qa_round,
                     ).first()
 
@@ -440,7 +448,7 @@ def execute_qa_job(job, progress_callback):
                     else:
                         new_trans = ItemTranslation(
                             item_id=item_id,
-                            model_type=model_type,
+                            model_type=translation_model_type,
                             qa_round=qa_round,
                             content=compressed,
                             last_translation_start=datetime.utcnow(),
@@ -471,7 +479,7 @@ def execute_qa_job(job, progress_callback):
                     compressed_nav = zlib.compress(modified_nav) if isinstance(modified_nav, bytes) else zlib.compress(modified_nav.encode("utf-8"))
                     existing_nav = session.query(ItemTranslation).filter_by(
                         item_id=nav.id,
-                        model_type=model_type,
+                        model_type=translation_model_type,
                         qa_round=qa_round,
                     ).first()
                     if existing_nav:
@@ -482,7 +490,7 @@ def execute_qa_job(job, progress_callback):
                     else:
                         nav_trans = ItemTranslation(
                             item_id=nav.id,
-                            model_type=model_type,
+                            model_type=translation_model_type,
                             qa_round=qa_round,
                             content=compressed_nav,
                             last_translation_start=datetime.utcnow(),

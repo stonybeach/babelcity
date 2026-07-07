@@ -176,42 +176,6 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
             ))}
           </select>
         </div>
-        {currentTranslation && (
-          <div className="flex items-center gap-4 ml-auto">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={chapterMeta?.obsolete || false}
-                onChange={() => {
-                  if (confirmToggle) return
-                  setConfirmToggle({ type: 'obsolete', label: 'Toggle Obsolete' })
-                }}
-                className="rounded"
-              />
-              <span className="text-gray-600 dark:text-gray-400">Obsolete</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={currentTranslation.status}
-                onChange={() => {
-                  if (confirmToggle) return
-                  setConfirmToggle({ type: 'status', label: 'Toggle Translation Status' })
-                }}
-                className="rounded"
-              />
-              <span className="text-gray-600 dark:text-gray-400">Valid</span>
-            </label>
-            {currentTranslation.last_translation_start && (
-              <span className="text-xs text-gray-400">
-                Translated: {new Date(currentTranslation.last_translation_start).toLocaleString()}
-              </span>
-            )}
-            {currentTranslation.qa_model && (
-              <span className="text-xs text-gray-400">QA: {currentTranslation.qa_model}</span>
-            )}
-          </div>
-        )}
         <button
           onClick={() => downloadEpub.mutate()}
           disabled={downloadEpub.isPending}
@@ -320,6 +284,49 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
               </div>
             )}
           </div>
+
+          {/* Metadata bar - below IFrame */}
+          {currentTranslation && (
+            <div className="border-t border-gray-200 dark:border-gray-700 p-3 flex items-center gap-4 flex-wrap">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={chapterMeta?.obsolete || false}
+                  onChange={() => {
+                    if (confirmToggle) return
+                    setConfirmToggle({ type: 'obsolete', label: 'Toggle Obsolete' })
+                  }}
+                  className="rounded"
+                />
+                <span className="text-gray-600 dark:text-gray-400">Obsolete</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={currentTranslation.status}
+                  onChange={() => {
+                    if (confirmToggle) return
+                    setConfirmToggle({ type: 'status', label: 'Toggle Translation Status' })
+                  }}
+                  className="rounded"
+                />
+                <span className="text-gray-600 dark:text-gray-400">Valid</span>
+              </label>
+              {currentTranslation.last_translation_start && (
+                <span className="text-xs text-gray-400">
+                  Start: {new Date(currentTranslation.last_translation_start).toLocaleString()}
+                </span>
+              )}
+              {currentTranslation.last_translation_end && (
+                <span className="text-xs text-gray-400">
+                  End: {new Date(currentTranslation.last_translation_end).toLocaleString()}
+                </span>
+              )}
+              {currentTranslation.qa_model && (
+                <span className="text-xs text-gray-400">QA Model: {currentTranslation.qa_model}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

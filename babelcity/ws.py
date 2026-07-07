@@ -1,20 +1,33 @@
 """WebSocket endpoint for real-time job progress."""
 
 import json
+import asyncio
+import threading
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from .job_queue import job_queue
 
 router = APIRouter()
 
-# Connected WebSocket clients
 connected_clients: list = []
+_main_loop = None
+_main_loop_lock = threading.Lock()
+
+
+def set_main_loop(loop):
+    global _main_loop
+    with _main_loop_lock:
+        _main_loop = loop
+
+
+def get_main_loop():
+    with _main_loop_lock:
+        return _main_loop
 
 
 @router.websocket("/jobs")
 async def job_websocket(websocket: WebSocket):
     await websocket.accept()
     connected_clients.append(websocket)
-    # Send current job list on connect
     await _send_job_list(websocket)
     try:
         while True:
@@ -33,6 +46,7 @@ async def _send_job_list(ws: WebSocket):
                 "job_type": j.job_type,
                 "project_id": j.project_id,
                 "volume_number": j.volume_number,
+                "config_id": j.config_id,
                 "status": j.status.value,
                 "current": j.progress_completed,
                 "total": j.progress_total,
@@ -43,34 +57,47 @@ async def _send_job_list(ws: WebSocket):
     }))
 
 
-async def broadcast_progress(job_id: str, current: int, total: int):
+async def _broadcast(msg: str):
+    disconnected = []
+    for ws in connected_clients:
+        try:
+            await ws.send_text(msg)
+        except Exception:
+            disconnected.append(ws)
+    for ws in disconnected:
+        connected_clients.remove(ws)
+
+
+def broadcast_progress(job_id: str, current: int, total: int):
+    """Thread-safe: can be called from worker thread or main thread."""
     msg = json.dumps({
         "type": "progress",
         "job_id": job_id,
         "current": current,
         "total": total,
     })
-    disconnected = []
-    for ws in connected_clients:
+    loop = get_main_loop()
+    if loop and not loop.is_closed():
+        asyncio.run_coroutine_threadsafe(_broadcast(msg), loop)
+    else:
         try:
-            await ws.send_text(msg)
+            asyncio.run(_broadcast(msg))
         except Exception:
-            disconnected.append(ws)
-    for ws in disconnected:
-        connected_clients.remove(ws)
+            pass
 
 
-async def broadcast_status(job_id: str, status: str):
+def broadcast_status(job_id: str, status: str):
+    """Thread-safe: can be called from worker thread or main thread."""
     msg = json.dumps({
         "type": "status_change",
         "job_id": job_id,
         "status": status,
     })
-    disconnected = []
-    for ws in connected_clients:
+    loop = get_main_loop()
+    if loop and not loop.is_closed():
+        asyncio.run_coroutine_threadsafe(_broadcast(msg), loop)
+    else:
         try:
-            await ws.send_text(msg)
+            asyncio.run(_broadcast(msg))
         except Exception:
-            disconnected.append(ws)
-    for ws in disconnected:
-        connected_clients.remove(ws)
+            pass

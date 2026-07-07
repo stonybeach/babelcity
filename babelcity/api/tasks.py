@@ -37,8 +37,8 @@ class TaskDefinitionCreate(BaseModel):
     history: Optional[int] = None
     use_mini_glossary: Optional[bool] = None
     threads: int = 1
-    synchronize_quotes: Optional[bool] = True
-    traditional_chinese: Optional[bool] = True
+    synchronize_quotes: bool = True
+    traditional_chinese: bool = True
     model_type: Optional[str] = None
     retry_attempts: int = 2
     override_system_prompt: Optional[str] = None
