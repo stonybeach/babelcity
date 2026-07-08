@@ -13,6 +13,7 @@ interface BookViewerProps {
 
 export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onBack }) => {
   const queryClient = useQueryClient()
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
   const [selectedChapter, setSelectedChapter] = useState<string | null>(null)
   const [modelType, setModelType] = useState<string>('')
   const [qaRound, setQaRound] = useState(0)
@@ -21,6 +22,19 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
   const [chapters, setChapters] = useState<{ id: string, full_path: string, title: string }[]>([])
   const [meta, setMeta] = useState<any>(null)
   const [confirmToggle, setConfirmToggle] = useState<{ type: string, label: string } | null>(null)
+
+  // Listen for theme changes
+  React.useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.attributeName === 'class') {
+          setIsDark(document.documentElement.classList.contains('dark'))
+        }
+      }
+    })
+    observer.observe(document.documentElement, { attributes: true })
+    return () => observer.disconnect()
+  }, [])
 
   // Keyboard navigation for chapters
   React.useEffect(() => {
@@ -91,11 +105,29 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
     }
   }, [tocData])
 
-  const { data: chapterHtml, isLoading: chapterLoading } = useQuery({
+  const { data: chapterHtmlRaw, isLoading: chapterLoading } = useQuery({
     queryKey: ['chapter', selectedChapter, modelType, qaRound],
     queryFn: () => selectedChapter ? chaptersApi.getChapter(volumeId, selectedChapter, modelType || undefined, qaRound) : null,
     enabled: !!selectedChapter,
   })
+
+  // Inject dark mode CSS into chapter HTML when in dark mode
+  const chapterHtml = React.useMemo(() => {
+    if (!chapterHtmlRaw) return null
+    if (!isDark) return chapterHtmlRaw
+
+    const darkModeCss = `<style>
+      body, html { background-color: #1f2937 !important; color: #e5e7eb !important; }
+      p, h1, h2, h3, h4, h5, h6, span, div, li, td, th, blockquote, cite, q, figcaption, caption, label, a { color: #e5e7eb !important; }
+      a { color: #60a5fa !important; }
+    </style>`
+
+    if (chapterHtmlRaw.includes('</body>'))
+      return chapterHtmlRaw.replace('</body>', darkModeCss + '</body>')
+    if (chapterHtmlRaw.includes('</html>'))
+      return chapterHtmlRaw.replace('</html>', darkModeCss + '</html>')
+    return darkModeCss + chapterHtmlRaw
+  }, [chapterHtmlRaw, isDark])
 
   const downloadEpub = useMutation({
     mutationFn: () => projectsApi.exportEpub(projectId, volume?.volume_number || '1', modelType, qaRound),
@@ -103,7 +135,10 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
       const url = URL.createObjectURL(response.data)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${volume?.target_volume_title || project?.project_name}_${modelType}_${qaRound}.epub`
+      const baseName = volume?.target_volume_title || project?.project_name || 'chapter'
+      let safeName = baseName.replace(/[\\*?"<>|]/g, '_').replace(/^_+/, '')
+      if (!safeName) safeName = 'chapter'
+      a.download = `${safeName}_${modelType}_${qaRound}.epub`
       a.click()
       URL.revokeObjectURL(url)
     },

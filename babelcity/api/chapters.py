@@ -200,8 +200,8 @@ def get_chapter_meta(volume_id: str, item_id: str, db: Session = Depends(get_db)
                 "model_type": t.model_type,
                 "qa_round": t.qa_round,
                 "status": t.status,
-                "last_translation_start": t.last_translation_start.isoformat() if t.last_translation_start else None,
-                "last_translation_end": t.last_translation_end.isoformat() if t.last_translation_end else None,
+                "last_translation_start": t.last_translation_start.isoformat() + "Z" if t.last_translation_start else None,
+                "last_translation_end": t.last_translation_end.isoformat() + "Z" if t.last_translation_end else None,
                 "qa_model": t.qa_model,
             }
             for t in translations

@@ -72,7 +72,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {projects.map((p: Project) => (
-              <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+              <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td className="px-4 py-3">
                   <button
                     onClick={() => onNavigateToEditor(p.id)}
@@ -92,7 +92,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                         <button
                           key={v.id}
                           onClick={() => onNavigateToViewer(p.id, v.id)}
-                          className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+                          className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
                         >
                           <BookOpen size={14} /> {v.volume_number}
                         </button>
@@ -104,21 +104,21 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                   <div className="flex items-center justify-end gap-2">
                     <button
                       onClick={() => onNavigateToGlossary(p.id)}
-                      className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400"
+                      className="p-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
                       title="Glossary"
                     >
                       <Table2 size={16} />
                     </button>
                     <button
                       onClick={() => onNavigateToEditor(p.id)}
-                      className="p-2 text-gray-500 hover:text-yellow-600 dark:hover:text-yellow-400"
+                      className="p-2 text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300"
                       title="Edit"
                     >
                       <Pencil size={16} />
                     </button>
                     <button
                       onClick={() => setDeleteConfirm(p.id)}
-                      className="p-2 text-gray-500 hover:text-red-600 dark:hover:text-red-400"
+                      className="p-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
                       title="Delete"
                     >
                       <Trash2 size={16} />

@@ -199,6 +199,23 @@ def finalize_text(text, source_text=None, to_traditional=True):
     return text
 
 
+def extract_paragraphs(text):
+    """Extract paragraph texts from EPUB XML content. Follows translation_processor/qa_processor pattern."""
+    try:
+        tree = parse_xml(text)
+    except Exception:
+        return []
+
+    tags = tree.xpath('//*[local-name()="p" or local-name()="h1" or local-name()="h2" or local-name()="h3" or local-name()="h4"]')
+    paragraphs = []
+    for tag in tags:
+        txt = extract_text_with_ruby(tag)
+        if txt:
+            paragraphs.append(txt)
+
+    return paragraphs
+
+
 def chunk_paragraphs(paragraphs, chunk_size):
     """Group paragraphs into chunks of given size."""
     return [paragraphs[i:i+chunk_size] for i in range(0, len(paragraphs), chunk_size)]

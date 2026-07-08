@@ -170,7 +170,7 @@ export const JobsPage: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {jobs.map((j: Job) => (
-              <tr key={j.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+              <tr key={j.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                     j.job_type === 'Glossary' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
@@ -212,10 +212,10 @@ export const JobsPage: React.FC = () => {
                   <div className="flex items-center justify-end gap-1">
                     {j.status === 'Pending' && (
                       <>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'up' })} className="p-1 text-gray-500 hover:text-blue-600" title="Move up"><ArrowUp size={14} /></button>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'down' })} className="p-1 text-gray-500 hover:text-blue-600" title="Move down"><ArrowDown size={14} /></button>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'top' })} className="p-1 text-gray-500 hover:text-blue-600" title="Move to top"><ArrowUpToLine size={14} /></button>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'bottom' })} className="p-1 text-gray-500 hover:text-blue-600" title="Move to bottom"><ArrowDownToLine size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'up' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move up"><ArrowUp size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'down' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move down"><ArrowDown size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'top' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move to top"><ArrowUpToLine size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'bottom' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move to bottom"><ArrowDownToLine size={14} /></button>
                       </>
                     )}
                     {j.status === 'Completed' && (
@@ -298,8 +298,8 @@ export const JobsPage: React.FC = () => {
                 </label>
               )}
               {formType === 'QA' && (
-                <div className="flex gap-4">
-                  <div className="flex-1">
+                <>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Translation Model Type</label>
                     <select value={form.translation_model_type} onChange={e => setForm(f => ({ ...f, translation_model_type: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
@@ -309,17 +309,19 @@ export const JobsPage: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Version</label>
-                    <input type="number" value={form.start_version} onChange={e => setForm(f => ({ ...f, start_version: parseInt(e.target.value) || 0 }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Version</label>
+                      <input type="number" value={form.start_version} onChange={e => setForm(f => ({ ...f, start_version: parseInt(e.target.value) || 0 }))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of Passes</label>
+                      <input type="number" value={form.num_passes} onChange={e => setForm(f => ({ ...f, num_passes: parseInt(e.target.value) || 1 }))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of Passes</label>
-                    <input type="number" value={form.num_passes} onChange={e => setForm(f => ({ ...f, num_passes: parseInt(e.target.value) || 1 }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
-                  </div>
-                </div>
+                </>
               )}
             </div>
             <div className="flex justify-end gap-3 mt-6">

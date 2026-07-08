@@ -5,7 +5,7 @@ from datetime import datetime
 from .database import get_session
 from .models import FileItem, ItemTranslation, Project, BookVolume, TaskDefinition
 from .glossary_processor import scan_for_entities, filter_glossary_terms, merge_glossary
-from .text_processor import chunk_paragraphs, load_dictionary
+from .text_processor import chunk_paragraphs, extract_paragraphs, load_dictionary
 
 
 def execute_job(job, progress_callback):
@@ -62,33 +62,19 @@ def execute_glossary_job(job, progress_callback):
 
         pre_translated = load_dictionary(pre_translated_text)
 
-        # Reset if not add_only
-        if not add_only:
-            project.glossary = "{}"
+        # Reset if not add_only and not resuming
+        if not add_only and not resume:
+            project.glossary = {}
             for ch in chapters:
                 ch.glossary_scanned = False
             session.commit()
 
         # Filter chapters based on resume parameter
-        model_type = config.model_type or config.config_name
         if resume:
-            # Skip chapters that already have a valid translation for this model
-            filtered_chapters = []
-            for ch in chapters:
-                existing = session.query(ItemTranslation).filter_by(
-                    item_id=ch.id,
-                    model_type=model_type,
-                    qa_round=0,
-                    status=True
-                ).first()
-                if not existing:
-                    filtered_chapters.append(ch)
-            if filtered_chapters:
-                chapters = filtered_chapters
-            else:
+            chapters = [ch for ch in chapters if not ch.glossary_scanned]
+            if not chapters:
                 progress_callback(len(chapters), len(chapters))
                 return
-        # When resume=False, retranslate ALL chapters (no filtering)
 
         # Existing glossary
         import json
@@ -105,20 +91,17 @@ def execute_glossary_job(job, progress_callback):
         completed = 0
 
         for ch in chapters:
-            if resume and ch.glossary_scanned:
-                completed += 1
-                progress_callback(completed, total)
-                continue
-
             # Decompress content
             import zlib
             content = zlib.decompress(ch.content)
             text = content.decode("utf-8", errors="replace")
 
-            # Chunk and scan
-            chunks = chunk_paragraphs([text], config.chunk_size)
+            # Extract paragraphs and chunk
+            paragraphs = extract_paragraphs(text)
+            chunks = chunk_paragraphs(paragraphs, config.chunk_size)
             for chunk in chunks:
-                terms = scan_for_entities(chunk, llm_config, existing_glossary=merged, pre_translated=pre_translated)
+                chunk_text = "\n\n".join(chunk)
+                terms = scan_for_entities(chunk_text, llm_config, existing_glossary=merged, pre_translated=pre_translated)
                 filtered = filter_glossary_terms(terms, project.source_language)
                 merged = merge_glossary(merged, filtered, pre_translated)
 
@@ -227,6 +210,7 @@ def execute_translation_job(job, progress_callback):
                                     existing.content = compressed
                                     existing.last_translation_start = datetime.utcnow()
                                     existing.last_translation_end = datetime.utcnow()
+                                    existing.qa_model = None
                                 else:
                                     translation = ItemTranslation(
                                         item_id=ch.id,
@@ -235,6 +219,7 @@ def execute_translation_job(job, progress_callback):
                                         content=compressed,
                                         last_translation_start=datetime.utcnow(),
                                         last_translation_end=datetime.utcnow(),
+                                        qa_model=None,
                                     )
                                     save_session.add(translation)
                                 save_session.commit()
@@ -268,6 +253,7 @@ def execute_translation_job(job, progress_callback):
                         existing.content = compressed
                         existing.last_translation_start = datetime.utcnow()
                         existing.last_translation_end = datetime.utcnow()
+                        existing.qa_model = None
                     else:
                         translation = ItemTranslation(
                             item_id=ch.id,
@@ -276,6 +262,7 @@ def execute_translation_job(job, progress_callback):
                             content=compressed,
                             last_translation_start=datetime.utcnow(),
                             last_translation_end=datetime.utcnow(),
+                            qa_model=None,
                         )
                         session.add(translation)
                     session.commit()
@@ -308,6 +295,7 @@ def execute_translation_job(job, progress_callback):
                     existing.content = compressed
                     existing.last_translation_start = datetime.utcnow()
                     existing.last_translation_end = datetime.utcnow()
+                    existing.qa_model = None
                 else:
                     translation = ItemTranslation(
                         item_id=nav.id,
@@ -316,6 +304,7 @@ def execute_translation_job(job, progress_callback):
                         content=compressed,
                         last_translation_start=datetime.utcnow(),
                         last_translation_end=datetime.utcnow(),
+                        qa_model=None,
                     )
                     session.add(translation)
                 session.commit()
