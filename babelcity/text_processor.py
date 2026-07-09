@@ -52,10 +52,10 @@ def load_dictionary(pre_translated_text):
     """
     user_dict = {}
 
-    print(f"Text = {len(pre_translated_text)}")
+    # print(f"Text = {len(pre_translated_text)}")
     if pre_translated_text:
         for line in pre_translated_text.strip().split('\n'):
-            print(line)
+            # print(line)
             line = line.split('#')[0].strip()
             if '=>' in line:
                 parts = line.split('=>', 1)

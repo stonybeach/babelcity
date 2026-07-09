@@ -1,11 +1,169 @@
 """Job execution functions called by the worker loop."""
 
+import json
+import zlib
 from datetime import datetime
+from typing import Optional, Dict, Any, Tuple, List, Union
 
 from .database import get_session
 from .models import FileItem, ItemTranslation, Project, BookVolume, TaskDefinition
 from .glossary_processor import scan_for_entities, merge_glossary
 from .text_processor import chunk_paragraphs, extract_paragraphs, load_dictionary
+
+
+def _load_project_and_config(session, job) -> Tuple[Project, TaskDefinition]:
+    """Load project and task definition config for a job, raising ValueError if not found."""
+    project = session.query(Project).filter_by(id=job.project_id).first()
+    if not project:
+        raise ValueError(f"Project {job.project_id} not found")
+
+    config = session.query(TaskDefinition).filter_by(id=job.config_id).first()
+    if not config:
+        raise ValueError(f"Config {job.config_id} not found")
+
+    return project, config
+
+
+def _build_llm_config(config: TaskDefinition, full_params: bool = False) -> Dict[str, Any]:
+    """Build the LLM or QA config dictionary from a TaskDefinition.
+
+    Args:
+        config: The TaskDefinition instance.
+        full_params: Whether to include advanced/translation-specific parameters.
+    """
+    llm_config = {
+        "base_url": config.base_url,
+        "api_key": config.api_key,
+        "model": config.model,
+        "max_tokens": config.max_tokens,
+        "temperature": config.temperature,
+        "top_p": config.top_p,
+        "min_p": config.min_p,
+        "top_k": config.top_k,
+        "presence_penalty": config.presence_penalty,
+        "frequency_penalty": config.frequency_penalty,
+        "repetition_penalty": config.repetition_penalty,
+        "retry_attempts": config.retry_attempts,
+    }
+    if full_params:
+        llm_config.update({
+            "chunk_size": config.chunk_size,
+            "history": config.history,
+            "use_mini_glossary": config.use_mini_glossary,
+            "traditional_chinese": config.traditional_chinese,
+            "synchronize_quotes": config.synchronize_quotes,
+            "threads": config.threads,
+        })
+    return llm_config
+
+
+def _get_project_glossary(project: Project) -> Dict[str, Any]:
+    """Retrieve and parse the glossary dictionary from a Project."""
+    if project.glossary is None:
+        return {}
+    if isinstance(project.glossary, dict):
+        return project.glossary
+    return json.loads(project.glossary)
+
+
+def _decompress_content(compressed_content: bytes) -> str:
+    """Decompress and decode bytes using zlib and UTF-8."""
+    return zlib.decompress(compressed_content).decode("utf-8", errors="replace")
+
+
+def _compress_content(content: Union[bytes, str]) -> bytes:
+    """Compress content string or bytes using zlib."""
+    if isinstance(content, bytes):
+        return zlib.compress(content)
+    return zlib.compress(content.encode("utf-8"))
+
+
+def save_or_update_translation(
+    session,
+    item_id: str,
+    model_type: str,
+    qa_round: int,
+    content: bytes,
+    qa_model: Optional[str] = None,
+) -> None:
+    """Save or update an ItemTranslation record in the database.
+
+    Args:
+        session: SQLAlchemy session object.
+        item_id: The ID of the FileItem being translated.
+        model_type: The model type/identifier.
+        qa_round: The index of the QA round (0 for initial translation).
+        content: Zlib-compressed translated content bytes.
+        qa_model: Optional name of the model that executed the QA.
+    """
+    existing = session.query(ItemTranslation).filter_by(
+        item_id=item_id,
+        model_type=model_type,
+        qa_round=qa_round,
+    ).first()
+
+    now = datetime.utcnow()
+    if existing:
+        existing.content = content
+        existing.last_translation_start = now
+        existing.last_translation_end = now
+        existing.qa_model = qa_model
+    else:
+        translation = ItemTranslation(
+            item_id=item_id,
+            model_type=model_type,
+            qa_round=qa_round,
+            content=content,
+            last_translation_start=now,
+            last_translation_end=now,
+            qa_model=qa_model,
+        )
+        session.add(translation)
+    session.commit()
+
+
+def _translate_nav_items(
+    session,
+    volume_id: str,
+    glossary: Dict[str, Any],
+    config_dict: Dict[str, Any],
+    model_type: str,
+    qa_round: int,
+    qa_model: Optional[str] = None,
+) -> None:
+    """Translate all non-obsolete Nav items for a volume and save the translations.
+
+    Args:
+        session: SQLAlchemy session object.
+        volume_id: The ID of the BookVolume.
+        glossary: Dictionary representing the project glossary.
+        config_dict: Configuration parameters for the LLM.
+        model_type: The model type or configuration name identifier.
+        qa_round: The current QA round index (0 for initial translation).
+        qa_model: The QA model name if applicable.
+    """
+    from .translation_processor import process_toc
+
+    nav_items = session.query(FileItem).filter_by(
+        volume_id=volume_id,
+        item_type="Nav",
+        obsolete=False
+    ).all()
+
+    for nav in nav_items:
+        text = _decompress_content(nav.content)
+        modified_nav = process_toc(text, config_dict.get("chunk_size", 12), {}, glossary, config_dict)
+
+        if modified_nav:
+            compressed = _compress_content(modified_nav)
+            save_or_update_translation(
+                session=session,
+                item_id=nav.id,
+                model_type=model_type,
+                qa_round=qa_round,
+                content=compressed,
+                qa_model=qa_model,
+            )
 
 
 def execute_job(job, progress_callback):
@@ -23,31 +181,11 @@ def execute_job(job, progress_callback):
 def execute_glossary_job(job, progress_callback):
     """Execute glossary scanning job."""
     with get_session() as session:
-        # Load project
-        project = session.query(Project).filter_by(id=job.project_id).first()
-        if not project:
-            raise ValueError(f"Project {job.project_id} not found")
-
-        # Load config
-        config = session.query(TaskDefinition).filter_by(id=job.config_id).first()
-        if not config:
-            raise ValueError(f"Config {job.config_id} not found")
+        # Load project and config
+        project, config = _load_project_and_config(session, job)
 
         # Build LLM config
-        llm_config = {
-            "base_url": config.base_url,
-            "api_key": config.api_key,
-            "model": config.model,
-            "max_tokens": config.max_tokens,
-            "temperature": config.temperature,
-            "top_p": config.top_p,
-            "min_p": config.min_p,
-            "top_k": config.top_k,
-            "presence_penalty": config.presence_penalty,
-            "frequency_penalty": config.frequency_penalty,
-            "repetition_penalty": config.repetition_penalty,
-            "retry_attempts": config.retry_attempts,
-        }
+        llm_config = _build_llm_config(config, full_params=False)
 
         # Get chapters
         chapters = session.query(FileItem).filter_by(
@@ -61,7 +199,6 @@ def execute_glossary_job(job, progress_callback):
         pre_translated_text = job.params.get("pre_translated_terms", "")
 
         pre_translated = load_dictionary(pre_translated_text)
-        print(f"Loaded pre-translated items: {len(pre_translated)}")
 
         # Reset if not add_only and not resuming
         if not add_only and not resume:
@@ -77,15 +214,8 @@ def execute_glossary_job(job, progress_callback):
                 progress_callback(len(chapters), len(chapters))
                 return
 
-        # Existing glossary
-        import json
-        # Get project glossary (may be dict or JSON string)
-        if project.glossary is None:
-            existing_glossary = {}
-        elif isinstance(project.glossary, dict):
-            existing_glossary = project.glossary
-        else:
-            existing_glossary = json.loads(project.glossary)
+        # Get project glossary
+        existing_glossary = _get_project_glossary(project)
 
         merged = dict(existing_glossary)
         total = len(chapters)
@@ -94,9 +224,7 @@ def execute_glossary_job(job, progress_callback):
 
         for ch in chapters:
             # Decompress content
-            import zlib
-            content = zlib.decompress(ch.content)
-            text = content.decode("utf-8", errors="replace")
+            text = _decompress_content(ch.content)
 
             # Extract paragraphs and chunk
             paragraphs = extract_paragraphs(text)
@@ -105,7 +233,6 @@ def execute_glossary_job(job, progress_callback):
                 chunk_text = "\n".join(chunk)
                 terms = scan_for_entities(chunk_text, llm_config, existing_glossary=merged, pre_translated=pre_translated)
                 merged = merge_glossary(merged, terms)
-                print(f"Glossary count: {len(merged)}")
 
             ch.glossary_scanned = True
             completed += 1
@@ -130,48 +257,16 @@ def execute_glossary_job(job, progress_callback):
 def execute_translation_job(job, progress_callback):
     """Execute translation job with full LLM processing and multi-threading."""
     from .translation_processor import process_document
-    import zlib
-    import json
 
     with get_session() as session:
         # Load project and config
-        project = session.query(Project).filter_by(id=job.project_id).first()
-        if not project:
-            raise ValueError(f"Project {job.project_id} not found")
-
-        config = session.query(TaskDefinition).filter_by(id=job.config_id).first()
-        if not config:
-            raise ValueError(f"Config {job.config_id} not found")
+        project, config = _load_project_and_config(session, job)
 
         # Build LLM config with all parameters
-        llm_config = {
-            "base_url": config.base_url,
-            "api_key": config.api_key,
-            "model": config.model,
-            "max_tokens": config.max_tokens,
-            "temperature": config.temperature,
-            "top_p": config.top_p,
-            "min_p": config.min_p,
-            "top_k": config.top_k,
-            "presence_penalty": config.presence_penalty,
-            "frequency_penalty": config.frequency_penalty,
-            "repetition_penalty": config.repetition_penalty,
-            "retry_attempts": config.retry_attempts,
-            "chunk_size": config.chunk_size,
-            "history": config.history,
-            "use_mini_glossary": config.use_mini_glossary,
-            "traditional_chinese": config.traditional_chinese,
-            "synchronize_quotes": config.synchronize_quotes,
-            "threads": config.threads,
-        }
+        llm_config = _build_llm_config(config, full_params=True)
 
-        # Get project glossary (may be dict or JSON string)
-        if project.glossary is None:
-            glossary = {}
-        elif isinstance(project.glossary, dict):
-            glossary = project.glossary
-        else:
-            glossary = json.loads(project.glossary)
+        # Get project glossary
+        glossary = _get_project_glossary(project)
 
         # Get chapters
         chapters = session.query(FileItem).filter_by(
@@ -187,6 +282,11 @@ def execute_translation_job(job, progress_callback):
 
         progress_callback(0, total)
 
+        def process_chapter(ch):
+            text = _decompress_content(ch.content)
+            modified_xml, heading_map = process_document(text, glossary, llm_config)
+            return ch, modified_xml, heading_map
+
         if threads > 1:
             # Multi-threaded translation using ThreadPoolExecutor
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -195,14 +295,6 @@ def execute_translation_job(job, progress_callback):
             completed_counter = threading.atomic(0) if hasattr(threading, 'atomic') else {'value': 0}
             counter_lock = threading.Lock()
 
-            def process_chapter(ch):
-                from .translation_processor import process_document
-                import zlib
-                content = zlib.decompress(ch.content)
-                text = content.decode("utf-8", errors="replace")
-                modified_xml, heading_map = process_document(text, glossary, llm_config)
-                return ch, modified_xml, heading_map
-
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = {executor.submit(process_chapter, ch): ch for ch in chapters}
                 for future in as_completed(futures):
@@ -210,31 +302,16 @@ def execute_translation_job(job, progress_callback):
                     try:
                         _, modified_xml, heading_map = future.result()
                         if modified_xml:
-                            import zlib
-                            compressed = zlib.compress(modified_xml) if isinstance(modified_xml, bytes) else zlib.compress(modified_xml.encode("utf-8"))
+                            compressed = _compress_content(modified_xml)
                             with get_session() as save_session:
-                                existing = save_session.query(ItemTranslation).filter_by(
+                                save_or_update_translation(
+                                    session=save_session,
                                     item_id=ch.id,
                                     model_type=model_type,
                                     qa_round=0,
-                                ).first()
-                                if existing:
-                                    existing.content = compressed
-                                    existing.last_translation_start = datetime.utcnow()
-                                    existing.last_translation_end = datetime.utcnow()
-                                    existing.qa_model = None
-                                else:
-                                    translation = ItemTranslation(
-                                        item_id=ch.id,
-                                        model_type=model_type,
-                                        qa_round=0,
-                                        content=compressed,
-                                        last_translation_start=datetime.utcnow(),
-                                        last_translation_end=datetime.utcnow(),
-                                        qa_model=None,
-                                    )
-                                    save_session.add(translation)
-                                save_session.commit()
+                                    content=compressed,
+                                    qa_model=None,
+                                )
                     except Exception as e:
                         print(f"Error translating chapter {ch.full_path}: {e}")
 
@@ -244,129 +321,46 @@ def execute_translation_job(job, progress_callback):
                     progress_callback(completed, total)
         else:
             for ch in chapters:
-                # Decompress content
-                content = zlib.decompress(ch.content)
-                text = content.decode("utf-8", errors="replace")
-
-                # Translate
-                modified_xml, heading_map = process_document(text, glossary, llm_config)
-
+                _, modified_xml, heading_map = process_chapter(ch)
                 if modified_xml:
-                    # serialize_xml() returns bytes; compress directly
-                    import zlib
-                    compressed = zlib.compress(modified_xml) if isinstance(modified_xml, bytes) else zlib.compress(modified_xml.encode("utf-8"))
-
-                    existing = session.query(ItemTranslation).filter_by(
+                    compressed = _compress_content(modified_xml)
+                    save_or_update_translation(
+                        session=session,
                         item_id=ch.id,
                         model_type=model_type,
                         qa_round=0,
-                    ).first()
-                    if existing:
-                        existing.content = compressed
-                        existing.last_translation_start = datetime.utcnow()
-                        existing.last_translation_end = datetime.utcnow()
-                        existing.qa_model = None
-                    else:
-                        translation = ItemTranslation(
-                            item_id=ch.id,
-                            model_type=model_type,
-                            qa_round=0,
-                            content=compressed,
-                            last_translation_start=datetime.utcnow(),
-                            last_translation_end=datetime.utcnow(),
-                            qa_model=None,
-                        )
-                        session.add(translation)
-                    session.commit()
+                        content=compressed,
+                        qa_model=None,
+                    )
 
                 completed += 1
                 progress_callback(completed, total)
 
         # Translate Nav files
-        nav_items = session.query(FileItem).filter_by(
+        _translate_nav_items(
+            session=session,
             volume_id=job.volume_id,
-            item_type="Nav",
-            obsolete=False
-        ).all()
-
-        for nav in nav_items:
-            content = zlib.decompress(nav.content)
-            text = content.decode("utf-8", errors="replace")
-
-            from .translation_processor import process_toc
-            modified_nav = process_toc(text, llm_config.get("chunk_size", 12), {}, glossary, llm_config)
-
-            if modified_nav:
-                compressed = zlib.compress(modified_nav) if isinstance(modified_nav, bytes) else zlib.compress(modified_nav.encode("utf-8"))
-                existing = session.query(ItemTranslation).filter_by(
-                    item_id=nav.id,
-                    model_type=model_type,
-                    qa_round=0,
-                ).first()
-                if existing:
-                    existing.content = compressed
-                    existing.last_translation_start = datetime.utcnow()
-                    existing.last_translation_end = datetime.utcnow()
-                    existing.qa_model = None
-                else:
-                    translation = ItemTranslation(
-                        item_id=nav.id,
-                        model_type=model_type,
-                        qa_round=0,
-                        content=compressed,
-                        last_translation_start=datetime.utcnow(),
-                        last_translation_end=datetime.utcnow(),
-                        qa_model=None,
-                    )
-                    session.add(translation)
-                session.commit()
+            glossary=glossary,
+            config_dict=llm_config,
+            model_type=model_type,
+            qa_round=0,
+            qa_model=None,
+        )
 
 
 def execute_qa_job(job, progress_callback):
     """Execute QA job with multi-pass correction and multi-threading support."""
     from .qa_processor import process_qa_document, run_qa_on_chapters
-    import zlib
-    import json
 
     with get_session() as session:
         # Load project and config
-        project = session.query(Project).filter_by(id=job.project_id).first()
-        if not project:
-            raise ValueError(f"Project {job.project_id} not found")
-
-        config = session.query(TaskDefinition).filter_by(id=job.config_id).first()
-        if not config:
-            raise ValueError(f"Config {job.config_id} not found")
+        project, config = _load_project_and_config(session, job)
 
         # Build QA config with all LLM parameters
-        qa_config = {
-            "base_url": config.base_url,
-            "api_key": config.api_key,
-            "model": config.model,
-            "max_tokens": config.max_tokens,
-            "temperature": config.temperature,
-            "top_p": config.top_p,
-            "min_p": config.min_p,
-            "top_k": config.top_k,
-            "presence_penalty": config.presence_penalty,
-            "frequency_penalty": config.frequency_penalty,
-            "repetition_penalty": config.repetition_penalty,
-            "retry_attempts": config.retry_attempts,
-            "chunk_size": config.chunk_size,
-            "use_mini_glossary": config.use_mini_glossary,
-            "traditional_chinese": config.traditional_chinese,
-            "synchronize_quotes": config.synchronize_quotes,
-            "history": config.history,
-            "threads": config.threads,
-        }
+        qa_config = _build_llm_config(config, full_params=True)
 
-        # Get project glossary (may be dict or JSON string)
-        if project.glossary is None:
-            glossary = {}
-        elif isinstance(project.glossary, dict):
-            glossary = project.glossary
-        else:
-            glossary = json.loads(project.glossary)
+        # Get project glossary
+        glossary = _get_project_glossary(project)
 
         start_version = job.params.get("start_version", 0)
         num_passes = job.params.get("num_passes", 1)
@@ -388,6 +382,11 @@ def execute_qa_job(job, progress_callback):
         )
         total_chapters = len(initial_translations)
         progress_callback(0, num_passes * total_chapters)
+
+        def process_single(args):
+            item_id, content = args
+            modified, heading_map = process_qa_document(content, glossary, qa_config)
+            return (item_id, modified, heading_map)
 
         for pass_idx in range(num_passes):
             qa_round = start_version + pass_idx + 1
@@ -412,8 +411,7 @@ def execute_qa_job(job, progress_callback):
             # Prepare chapter items for QA
             chapter_items = []
             for trans in prev_translations:
-                content = zlib.decompress(trans.content)
-                text = content.decode("utf-8", errors="replace")
+                text = _decompress_content(trans.content)
                 chapter_items.append((trans.item_id, text))
 
             total = len(chapter_items)
@@ -422,11 +420,6 @@ def execute_qa_job(job, progress_callback):
             if threads > 1:
                 # Multi-threaded QA
                 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-                def process_single(args):
-                    item_id, content = args
-                    modified, heading_map = process_qa_document(content, glossary, qa_config)
-                    return (item_id, modified, heading_map)
 
                 with ThreadPoolExecutor(max_workers=threads) as executor:
                     futures = {
@@ -442,77 +435,33 @@ def execute_qa_job(job, progress_callback):
                             print(f"Error processing item {item_id}: {e}")
             else:
                 # Single-threaded QA
-                for item_id, content in chapter_items:
-                    modified, heading_map = process_qa_document(content, glossary, qa_config)
-                    results.append((item_id, modified, heading_map))
+                for item in chapter_items:
+                    results.append(process_single(item))
 
             # Save QA results
+            qa_model_name = config.model_type or config.config_name
             for item_id, modified_xml, heading_map in results:
                 if modified_xml:
-                    compressed = zlib.compress(modified_xml) if isinstance(modified_xml, bytes) else zlib.compress(modified_xml.encode("utf-8"))
-                    # Check if translation already exists for this round
-                    existing = session.query(ItemTranslation).filter_by(
+                    compressed = _compress_content(modified_xml)
+                    save_or_update_translation(
+                        session=session,
                         item_id=item_id,
                         model_type=translation_model_type,
                         qa_round=qa_round,
-                    ).first()
-
-                    if existing:
-                        existing.content = compressed
-                        existing.last_translation_start = datetime.utcnow()
-                        existing.last_translation_end = datetime.utcnow()
-                        existing.qa_model = config.model_type or config.config_name
-                    else:
-                        new_trans = ItemTranslation(
-                            item_id=item_id,
-                            model_type=translation_model_type,
-                            qa_round=qa_round,
-                            content=compressed,
-                            last_translation_start=datetime.utcnow(),
-                            last_translation_end=datetime.utcnow(),
-                            qa_model=config.model_type or config.config_name,
-                        )
-                        session.add(new_trans)
-                    session.commit()
+                        content=compressed,
+                        qa_model=qa_model_name,
+                    )
 
             # Progress callback after each pass
             progress_callback((pass_idx + 1) * total, num_passes * total)
 
             # Update Nav after each QA pass
-            nav_items = session.query(FileItem).filter_by(
+            _translate_nav_items(
+                session=session,
                 volume_id=job.volume_id,
-                item_type="Nav",
-                obsolete=False
-            ).all()
-
-            for nav in nav_items:
-                content = zlib.decompress(nav.content)
-                text = content.decode("utf-8", errors="replace")
-
-                from .translation_processor import process_toc
-                modified_nav = process_toc(text, qa_config.get("chunk_size", 12), {}, glossary, qa_config)
-
-                if modified_nav:
-                    compressed_nav = zlib.compress(modified_nav) if isinstance(modified_nav, bytes) else zlib.compress(modified_nav.encode("utf-8"))
-                    existing_nav = session.query(ItemTranslation).filter_by(
-                        item_id=nav.id,
-                        model_type=translation_model_type,
-                        qa_round=qa_round,
-                    ).first()
-                    if existing_nav:
-                        existing_nav.content = compressed_nav
-                        existing_nav.last_translation_start = datetime.utcnow()
-                        existing_nav.last_translation_end = datetime.utcnow()
-                        existing_nav.qa_model = config.model_type or config.config_name
-                    else:
-                        nav_trans = ItemTranslation(
-                            item_id=nav.id,
-                            model_type=translation_model_type,
-                            qa_round=qa_round,
-                            content=compressed_nav,
-                            last_translation_start=datetime.utcnow(),
-                            last_translation_end=datetime.utcnow(),
-                            qa_model=config.model_type or config.config_name,
-                        )
-                        session.add(nav_trans)
-                    session.commit()
+                glossary=glossary,
+                config_dict=qa_config,
+                model_type=translation_model_type,
+                qa_round=qa_round,
+                qa_model=qa_model_name,
+            )
