@@ -17,6 +17,10 @@ export const TasksPage: React.FC = () => {
   const { data: taskDefs, isLoading } = useQuery({
     queryKey: ['tasks', filterType],
     queryFn: () => tasksApi.list(filterType || undefined),
+    select: (data) => [...data].sort((a, b) => {
+      const typeCmp = (a.task_type ?? '').localeCompare(b.task_type ?? '');
+      return typeCmp !== 0 ? typeCmp : (a.config_name ?? '').localeCompare(b.config_name ?? '');
+    }),
   })
 
   const updateMutation = useMutation({

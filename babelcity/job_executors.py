@@ -4,7 +4,7 @@ from datetime import datetime
 
 from .database import get_session
 from .models import FileItem, ItemTranslation, Project, BookVolume, TaskDefinition
-from .glossary_processor import scan_for_entities, filter_glossary_terms, merge_glossary
+from .glossary_processor import scan_for_entities, merge_glossary
 from .text_processor import chunk_paragraphs, extract_paragraphs, load_dictionary
 
 
@@ -58,9 +58,10 @@ def execute_glossary_job(job, progress_callback):
 
         resume = job.params.get("resume", True)
         add_only = job.params.get("add_only", False)
-        pre_translated_text = job.params.get("pre_translated", "")
+        pre_translated_text = job.params.get("pre_translated_terms", "")
 
         pre_translated = load_dictionary(pre_translated_text)
+        print(f"Loaded pre-translated items: {len(pre_translated)}")
 
         # Reset if not add_only and not resuming
         if not add_only and not resume:
@@ -89,6 +90,7 @@ def execute_glossary_job(job, progress_callback):
         merged = dict(existing_glossary)
         total = len(chapters)
         completed = 0
+        progress_callback(0, total)
 
         for ch in chapters:
             # Decompress content
@@ -100,15 +102,25 @@ def execute_glossary_job(job, progress_callback):
             paragraphs = extract_paragraphs(text)
             chunks = chunk_paragraphs(paragraphs, config.chunk_size)
             for chunk in chunks:
-                chunk_text = "\n\n".join(chunk)
+                chunk_text = "\n".join(chunk)
                 terms = scan_for_entities(chunk_text, llm_config, existing_glossary=merged, pre_translated=pre_translated)
-                filtered = filter_glossary_terms(terms, project.source_language)
-                merged = merge_glossary(merged, filtered, pre_translated)
+                merged = merge_glossary(merged, terms)
+                print(f"Glossary count: {len(merged)}")
 
             ch.glossary_scanned = True
             completed += 1
             progress_callback(completed, total)
             session.commit()
+
+        # Force all pre_translated entries into glossary (PoC run_lore_pass lines 527-534)
+        if pre_translated:
+            for jp_name, zh_name in pre_translated.items():
+                if jp_name not in merged:
+                    merged[jp_name] = {
+                        "translated_name": zh_name,
+                        "gender": "未知",
+                        "type": ""
+                    }
 
         # Save glossary
         project.glossary = merged
@@ -360,6 +372,22 @@ def execute_qa_job(job, progress_callback):
         num_passes = job.params.get("num_passes", 1)
         translation_model_type = job.params.get("translation_model_type", "")
         threads = config.threads or 1
+
+        # Get total chapters for progress tracking
+        initial_translations = (
+            session.query(ItemTranslation)
+            .join(FileItem, FileItem.id == ItemTranslation.item_id)
+            .filter(
+                FileItem.volume_id == job.volume_id,
+                FileItem.item_type == "Chapter",
+                FileItem.obsolete == False,
+                ItemTranslation.model_type == translation_model_type,
+                ItemTranslation.qa_round == start_version,
+            )
+            .all()
+        )
+        total_chapters = len(initial_translations)
+        progress_callback(0, num_passes * total_chapters)
 
         for pass_idx in range(num_passes):
             qa_round = start_version + pass_idx + 1

@@ -2,7 +2,7 @@
 
 import json
 
-from .llm_handler import ask_llm, extract_json
+from .llm_handler import ask_llm_json
 from .text_processor import has_japanese
 
 
@@ -40,26 +40,14 @@ def build_user_prompt(text_chunk):
 def scan_for_entities(text_chunk, llm_config, existing_glossary=None, pre_translated=None):
     """Extract glossary terms from a text chunk using LLM.
 
-    Matches PoC scan_for_entities logic from translate_epubs_new.py.
-
-    Args:
-        text_chunk: Text to scan
-        llm_config: Dict with LLM config (base_url, api_key, model, etc.)
-        existing_glossary: Current glossary to include in prompt context
-        pre_translated: Optional dict of pre-translated terms
-
-    Returns:
-        Dict of extracted terms
+    Matches PoC scan_for_entities: retries on JSON failures, applies inline
+    filtering (has_japanese, len > 30), and applies pre_translated overrides
+    per-term before returning.
     """
     system_prompt = build_system_prompt(existing_glossary or {}, pre_translated or {})
     user_prompt = build_user_prompt(text_chunk)
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    response = ask_llm(
+    terms = ask_llm_json(
         base_url=llm_config.get("base_url", "http://localhost:8080/v1"),
         api_key=llm_config.get("api_key", "not-needed"),
         model=llm_config.get("model", "default"),
@@ -71,63 +59,57 @@ def scan_for_entities(text_chunk, llm_config, existing_glossary=None, pre_transl
         min_p=llm_config.get("min_p", 0.05),
         repetition_penalty=llm_config.get("repetition_penalty", 1.04),
         frequency_penalty=llm_config.get("frequency_penalty", 0.05),
-        presence_penalty=llm_config.get("presence_penalty", 0.0),
+        presence_penalty=0.0,
         top_k=llm_config.get("top_k"),
+        max_retries=llm_config.get("retry_attempts", 3),
     )
 
-    result = extract_json(response)
-    if result and isinstance(result, dict):
-        return result
-    return {}
-
-
-def filter_glossary_terms(terms, source_language="ja"):
-    """Filter glossary terms matching PoC inline logic.
-
-    Discard terms >30 chars, non-Japanese terms (when source=ja),
-    or terms where translated_name equals the original name.
-    """
+    # Inline filtering matching PoC scan_for_entities (lines 468-482)
+    pre_translated = pre_translated or {}
     filtered = {}
-    for term, info in terms.items():
-        # Skip terms longer than 30 characters
-        if len(term) > 30:
+    for name, data in terms.items():
+        if not isinstance(data, dict):
             continue
-        # For Japanese source, skip terms without hiragana/katakana
-        if source_language == "ja" and not has_japanese(term):
+        if not has_japanese(name):
             continue
-        # Skip if translated_name is the same as the original (PoC smart filter)
-        if isinstance(info, dict):
-            translated = info.get("translated_name", "")
-            if translated == term:
-                continue
-        filtered[term] = info
+        if len(name) > 30:
+            continue
+        # Apply pre_translated override (PoC line 478-479)
+        if name in pre_translated:
+            data['translated_name'] = pre_translated[name]
+        filtered[name] = data
+
+    return filtered
+
+    # Inline filtering matching PoC scan_for_entities (lines 468-482)
+    pre_translated = pre_translated or {}
+    filtered = {}
+    for name, data in terms.items():
+        if not isinstance(data, dict):
+            continue
+        if not has_japanese(name):
+            continue
+        if len(name) > 30:
+            continue
+        # Apply pre_translated override (PoC line 478-479)
+        if name in pre_translated:
+            data['translated_name'] = pre_translated[name]
+        filtered[name] = data
+
     return filtered
 
 
-def merge_glossary(existing, new_terms, pre_translated=None):
+
+def merge_glossary(existing, new_terms):
     """Merge scanned terms into existing glossary.
 
-    Apply pre-translated overrides. Uses 'translated_name' field matching PoC.
+    Matching PoC: scan_for_entities already applies pre_translated overrides
+    and filtering inline. merge_glossary only handles merging new terms.
     """
     merged = dict(existing)
 
     for term, info in new_terms.items():
-        if term in merged:
-            # Update existing term
-            if isinstance(info, dict):
-                merged[term].update(info)
-        else:
-            merged[term] = info
-
-    # Apply pre-translated overrides (PoC: predefined_dict overrides translated_name)
-    if pre_translated:
-        for term, translation in pre_translated.items():
-            if term in merged:
-                if isinstance(merged[term], dict):
-                    merged[term]["translated_name"] = translation
-                else:
-                    merged[term] = {"translated_name": translation, "type": "未知", "gender": "未知"}
-            else:
-                merged[term] = {"translated_name": translation, "type": "未知", "gender": "未知"}
+        # PoC overwrites entire entry: self.global_glossary[name] = data
+        merged[term] = info
 
     return merged

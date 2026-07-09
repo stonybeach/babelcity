@@ -44,7 +44,7 @@ def serialize_xml(tree):
     return etree.tostring(new_tree, encoding='utf-8', xml_declaration=True, method='xml')
 
 
-def load_dictionary(dict_path=None, pre_translated_text=None):
+def load_dictionary(pre_translated_text):
     """Load pre-translated terms. Ported from _load_dictionary.
 
     Can load from file path or from text string.
@@ -52,20 +52,10 @@ def load_dictionary(dict_path=None, pre_translated_text=None):
     """
     user_dict = {}
 
-    if dict_path:
-        import os
-        if os.path.exists(dict_path):
-            with open(dict_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.split('#')[0].strip()
-                    if '=>' in line:
-                        parts = line.split('=>', 1)
-                        jp_name = parts[0].strip()
-                        zh_name = parts[1].strip()
-                        if jp_name and zh_name:
-                            user_dict[jp_name] = zh_name
-    elif pre_translated_text:
+    print(f"Text = {len(pre_translated_text)}")
+    if pre_translated_text:
         for line in pre_translated_text.strip().split('\n'):
+            print(line)
             line = line.split('#')[0].strip()
             if '=>' in line:
                 parts = line.split('=>', 1)

@@ -22,6 +22,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: projectsApi.list,
+    select: (data) => [...data].sort((a, b) => a.project_name.localeCompare(b.project_name)),
   })
 
   const createMutation = useMutation({

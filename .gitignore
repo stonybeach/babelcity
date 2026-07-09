@@ -4,8 +4,11 @@ assets/external/
 __pycache__/
 *.db
 .states
-translate_epubs_new.py
 babelcity.db
+babelcity.db-shm
+babelcity.db-wal
 node_modules/
 dist/
 .DS_Store
+opencode*.json
+example_glossary.txt
