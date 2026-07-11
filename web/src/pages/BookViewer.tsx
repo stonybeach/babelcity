@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { BookOpen, Download, X, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from 'lucide-react'
+import { BookOpen, Download, X, ChevronLeft, ChevronRight, CheckCircle2, XCircle, RefreshCw } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projects as projectsApi, chapters as chaptersApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -218,15 +218,24 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">{t('viewer.qaRound')}</label>
-          <select
-            value={qaRound}
-            onChange={e => setQaRound(parseInt(e.target.value))}
-            className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-          >
-            {availableQARounds.map(qr => (
-              <option key={qr} value={qr}>{qr === 0 ? '0 (Original)' : qr.toString()}</option>
-            ))}
-          </select>
+          <div className="flex items-end gap-2">
+            <select
+              value={qaRound}
+              onChange={e => setQaRound(parseInt(e.target.value))}
+              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+            >
+              {availableQARounds.map(qr => (
+                <option key={qr} value={qr}>{qr === 0 ? '0 (Original)' : qr.toString()}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['toc'] })}
+              className="p-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 text-sm"
+              title="Refresh TOC"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
         </div>
         <button
           onClick={() => downloadEpub.mutate()}

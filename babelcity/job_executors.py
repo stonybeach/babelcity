@@ -275,10 +275,23 @@ def execute_translation_job(job, progress_callback):
             obsolete=False
         ).all()
 
-        total = len(chapters)
-        completed = 0
         model_type = config.model_type or config.config_name
         threads = config.threads or 1
+        resume = job.params.get("resume", True)
+
+        # Filter chapters based on resume parameter
+        if resume:
+            translated_item_ids = {
+                it.item_id for it in session.query(ItemTranslation).filter_by(
+                    model_type=model_type,
+                    qa_round=0,
+                    status=True
+                ).all()
+            }
+            chapters = [ch for ch in chapters if ch.id not in translated_item_ids]
+
+        total = len(chapters)
+        completed = 0
 
         progress_callback(0, total)
 
@@ -398,6 +411,8 @@ def execute_qa_job(job, progress_callback):
                 .join(FileItem, FileItem.id == ItemTranslation.item_id)
                 .filter(
                     FileItem.volume_id == job.volume_id,
+                    FileItem.item_type == "Chapter",
+                    FileItem.obsolete == False,
                     ItemTranslation.model_type == translation_model_type,
                     ItemTranslation.qa_round == prev_round,
                 )
@@ -416,10 +431,14 @@ def execute_qa_job(job, progress_callback):
 
             total = len(chapter_items)
             results = []
+            processed = 0
 
             if threads > 1:
                 # Multi-threaded QA
                 from concurrent.futures import ThreadPoolExecutor, as_completed
+                import threading
+
+                counter_lock = threading.Lock()
 
                 with ThreadPoolExecutor(max_workers=threads) as executor:
                     futures = {
@@ -433,10 +452,16 @@ def execute_qa_job(job, progress_callback):
                         except Exception as e:
                             item_id, _ = futures[future]
                             print(f"Error processing item {item_id}: {e}")
+
+                        with counter_lock:
+                            processed += 1
+                        progress_callback(pass_idx * total_chapters + processed, num_passes * total_chapters)
             else:
                 # Single-threaded QA
                 for item in chapter_items:
                     results.append(process_single(item))
+                    processed += 1
+                    progress_callback(pass_idx * total_chapters + processed, num_passes * total_chapters)
 
             # Save QA results
             qa_model_name = config.model_type or config.config_name
@@ -451,9 +476,6 @@ def execute_qa_job(job, progress_callback):
                         content=compressed,
                         qa_model=qa_model_name,
                     )
-
-            # Progress callback after each pass
-            progress_callback((pass_idx + 1) * total, num_passes * total)
 
             # Update Nav after each QA pass
             _translate_nav_items(
