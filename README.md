@@ -10,10 +10,16 @@ Local Web Novel & EPUB Translation Organizer. Provides a web UI for managing tra
 
 ## Quick Start
 
+### Before you start
+
+- Install git
+- Install python 3.11 or newer
+- Install Node JS 18 or newer
+
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/stonybeach/babelcity.git
 cd babelcity
 ```
 
