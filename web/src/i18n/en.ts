@@ -1,5 +1,6 @@
 export const en = {
   // Navbar
+  'nav.appName': 'Babel City',
   'nav.projects': 'Projects',
   'nav.tasks': 'Tasks',
   'nav.jobs': 'Jobs',

@@ -1,5 +1,6 @@
 export const zh = {
   // Navbar
+  'nav.appName': '巴別城',
   'nav.projects': '项目',
   'nav.tasks': '任务',
   'nav.jobs': '作业',

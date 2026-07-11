@@ -35,7 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
           <path d="M10 80 Q50 60 90 80" stroke="#f59e0b" strokeWidth="3" fill="none"/>
           <circle cx="80" cy="35" r="10" fill="#f59e0b"/>
         </svg>
-        <span className="text-xl font-bold text-gray-900 dark:text-gray-100">Babel City</span>
+        <span className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('nav.appName')}</span>
       </div>
 
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
