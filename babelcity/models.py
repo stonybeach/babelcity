@@ -54,6 +54,7 @@ class FileItem(Base):
     full_path = Column(String(500), nullable=False)
     content = Column(LargeBinary, nullable=False)
     item_type = Column(String(10), nullable=False)
+    spine_order = Column(Integer, nullable=True, default=None)
     glossary_scanned = Column(Boolean, nullable=False, default=False)
     obsolete = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

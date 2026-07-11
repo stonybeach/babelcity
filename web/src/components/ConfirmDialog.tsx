@@ -1,4 +1,5 @@
 import React from 'react'
+import { useI18n } from '../i18n'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -13,8 +14,9 @@ interface ConfirmDialogProps {
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   open, title, message, onConfirm, onCancel,
-  confirmText = 'Confirm', cancelText = 'Cancel', danger = false,
+  confirmText, cancelText, danger = false,
 }) => {
+  const { t } = useI18n()
   if (!open) return null
 
   return (
@@ -27,13 +29,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onCancel}
             className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
           >
-            {cancelText}
+            {cancelText || t('confirm.cancel')}
           </button>
           <button
             onClick={onConfirm}
             className={`px-4 py-2 rounded-md text-white ${danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}
           >
-            {confirmText}
+            {confirmText || t('confirm.confirm')}
           </button>
         </div>
       </div>

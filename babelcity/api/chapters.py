@@ -121,6 +121,8 @@ def get_nav(
 @router.get("/volumes/{volume_id}/toc")
 def get_toc(
     volume_id: str,
+    model_type: Optional[str] = Query(None),
+    qa_round: int = Query(0),
     db: Session = Depends(get_db),
 ):
     """Build TOC from Chapter items (spine) + Nav name mapping."""
@@ -139,6 +141,28 @@ def get_toc(
         nav_content = nav_item.content
         if isinstance(nav_content, bytes):
             nav_content = decompress(nav_content)
+
+        if model_type:
+            translation = db.execute(
+                select(ItemTranslation).where(
+                    ItemTranslation.item_id == nav_item.id,
+                    ItemTranslation.model_type == model_type,
+                    ItemTranslation.qa_round == qa_round,
+                )
+            ).scalar_one_or_none()
+            if not translation:
+                translation = db.execute(
+                    select(ItemTranslation).where(
+                        ItemTranslation.item_id == nav_item.id,
+                        ItemTranslation.model_type == model_type,
+                        ItemTranslation.qa_round == 0,
+                    )
+                ).scalar_one_or_none()
+            if translation and translation.content:
+                nav_content = translation.content
+                if isinstance(nav_content, bytes):
+                    nav_content = decompress(nav_content)
+
         nav_dir = os.path.dirname(nav_item.full_path)
         try:
             nav_tree = lxml_etree.fromstring(nav_content if isinstance(nav_content, bytes) else nav_content.encode("utf-8"))
@@ -165,8 +189,11 @@ def get_toc(
         except Exception:
             pass
 
-    # Build TOC from Chapter items
-    chapter_items = [item for item in all_items if item.item_type == "Chapter"]
+    # Build TOC from Chapter items, ordered by spine_order
+    chapter_items = sorted(
+        [item for item in all_items if item.item_type == "Chapter"],
+        key=lambda item: item.spine_order if item.spine_order is not None else 999999
+    )
     toc = []
     for item in chapter_items:
         path_no_fragment = item.full_path.split("#")[0]

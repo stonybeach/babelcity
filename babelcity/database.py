@@ -67,9 +67,22 @@ Base = declarative_base()
 
 
 def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, and apply migrations."""
     engine = get_engine()
     Base.metadata.create_all(engine)
+
+    # Migration: add spine_order column to file_items if it doesn't exist
+    with engine.connect() as conn:
+        inspector = sqlalchemy.inspect(engine)
+        columns = [col["name"] for col in inspector.get_columns("file_items")] if "file_items" in inspector.get_table_names() else []
+        conn.execute(sqlalchemy.text("PRAGMA journal_mode=WAL"))
+        if "file_items" in inspector.get_table_names() and "spine_order" not in columns:
+            try:
+                conn.execute(sqlalchemy.text("ALTER TABLE file_items ADD COLUMN spine_order INTEGER DEFAULT NULL"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                pass
 
 
 def close_db():

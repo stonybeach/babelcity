@@ -5,6 +5,7 @@ import { projects as projectsApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
 import { type Project } from '../types'
+import { useI18n } from '../i18n'
 
 interface ProjectEditorProps {
   projectId: string
@@ -13,6 +14,7 @@ interface ProjectEditorProps {
 }
 
 export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack, onViewVolume }) => {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showAddVolume, setShowAddVolume] = useState(false)
@@ -53,7 +55,6 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
 
   const importEpub = useMutation({
     mutationFn: ({ volumeId, file }: { volumeId: string; file: File }) => {
-      // Find volume number from volume ID
       const volume = project?.volumes.find((v: any) => v.id === volumeId)
       if (!volume) throw new Error('Volume not found')
       return projectsApi.importEpub(projectId, volume.volume_number, file)
@@ -71,18 +72,20 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
   })
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading...</div>
-  if (!project) return <div className="p-8 text-center text-red-500">Project not found</div>
+  const typeDisplay = (val: string) => val === 'Light Novel' ? t('projects.type.lightNovel') : val === 'Web Novel' ? t('projects.type.webNovel') : val
+
+  if (isLoading) return <div className="p-8 text-center text-gray-500">{t('editor.loading')}</div>
+  if (!project) return <div className="p-8 text-center text-red-500">{t('editor.notFound')}</div>
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > 50 * 1024 * 1024) {
-        setErrorToast('File size exceeds 50MB limit')
+        setErrorToast(t('editor.error.fileSize'))
         return
       }
       if (!file.name.toLowerCase().endsWith('.epub')) {
-        setErrorToast('Please select a valid EPUB file')
+        setErrorToast(t('editor.error.invalidFile'))
         return
       }
       setSelectedFile(file)
@@ -105,17 +108,17 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
-          ← Back to Projects
+          {t('editor.back')}
         </button>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Edit Project</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('editor.title')}</h2>
         <div />
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Project Details</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{t('editor.details')}</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.projectName')}</label>
             <input
               type="text"
               defaultValue={project.project_name}
@@ -124,7 +127,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source Title</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.sourceTitle')}</label>
             <input
               type="text"
               defaultValue={project.source_title || ''}
@@ -133,18 +136,18 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project Type</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.projectType')}</label>
             <select
               value={project.project_type}
               onChange={e => updateProject.mutate({ project_type: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
-              <option value="Light Novel">Light Novel</option>
-              <option value="Web Novel">Web Novel</option>
+              <option value="Light Novel">{t('projects.type.lightNovel')}</option>
+              <option value="Web Novel">{t('projects.type.webNovel')}</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source Language</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.sourceLang')}</label>
             <input
               type="text"
               defaultValue={project.source_language}
@@ -153,7 +156,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Language</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.targetLang')}</label>
             <input
               type="text"
               defaultValue={project.target_language}
@@ -171,19 +174,19 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
               onClick={() => setShowAddVolume(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              <Plus size={16} /> Add Book Volume
+              <Plus size={16} /> {t('editor.addVolume')}
             </button>
           )}
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Volumes</h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('editor.volumes')}</h3>
         </div>
 
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Volume</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Source Title</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Target Title</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('editor.table.volume')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('editor.table.sourceTitle')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('editor.table.targetTitle')}</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('editor.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -218,14 +221,14 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                     <button
                       onClick={() => onViewVolume(projectId, v.id)}
                       className="p-2 text-gray-500 hover:text-blue-600"
-                      title="View"
+                      title={t('editor.action.view')}
                     >
                       <Eye size={16} />
                     </button>
                     <button
                       onClick={() => setUploadDialog({ volumeId: v.id, volumeNumber: v.volume_number })}
                       className="p-2 text-gray-500 hover:text-green-600"
-                      title="Upload EPUB"
+                      title={t('editor.action.upload')}
                     >
                       <Upload size={16} />
                     </button>
@@ -233,7 +236,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                       <button
                         onClick={() => setDeleteVolumeConfirm(v.volume_number)}
                         className="p-2 text-gray-500 hover:text-red-600"
-                        title="Remove"
+                        title={t('editor.action.remove')}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -251,24 +254,24 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Add Volume</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('editor.addVolModal.title')}</h3>
               <button onClick={() => setShowAddVolume(false)} className="text-gray-500 hover:text-gray-700">
                 <X size={20} />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Volume Number</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.addVolModal.number')}</label>
                 <input
                   type="text"
                   value={volumeForm.volume_number}
                   onChange={e => setVolumeForm({ ...volumeForm, volume_number: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  placeholder="e.g. 2"
+                  placeholder={t('editor.addVolModal.placeholder')}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source Volume Title</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.addVolModal.sourceTitle')}</label>
                 <input
                   type="text"
                   value={volumeForm.source_volume_title}
@@ -277,7 +280,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Volume Title</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.addVolModal.targetTitle')}</label>
                 <input
                   type="text"
                   value={volumeForm.target_volume_title}
@@ -291,7 +294,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                 onClick={() => setShowAddVolume(false)}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                Cancel
+                {t('projects.create.cancel')}
               </button>
               <button
                 onClick={() => {
@@ -301,7 +304,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                 }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
-                Add Volume
+                {t('editor.addVolModal.submit')}
               </button>
             </div>
           </div>
@@ -314,16 +317,14 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Upload EPUB to Volume {uploadDialog.volumeNumber}
+                {t('editor.upload.title', { number: uploadDialog.volumeNumber })}
               </h3>
               <button onClick={handleCancelUpload} className="text-gray-500 hover:text-gray-700">
                 <X size={20} />
               </button>
             </div>
 
-            {/* Drop Zone */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
+            <label
               onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
               onDrop={e => {
                 e.preventDefault()
@@ -332,11 +333,18 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                 if (file && file.name.toLowerCase().endsWith('.epub') && file.size <= 50 * 1024 * 1024) {
                   setSelectedFile(file)
                 } else {
-                  setErrorToast('Please select a valid EPUB file (max 50MB)')
+                  setErrorToast(t('editor.error.invalidFileUpload'))
                 }
               }}
-              className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
+              className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors block"
             >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".epub"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
               {selectedFile ? (
                 <div className="flex flex-col items-center">
                   <Check size={32} className="text-green-500 mb-2" />
@@ -344,50 +352,39 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                   <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
                     {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                   </p>
-                  <p className="text-blue-600 dark:text-blue-400 text-sm mt-2">Click to change file</p>
+                  <p className="text-blue-600 dark:text-blue-400 text-sm mt-2">{t('editor.upload.changeFile')}</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center">
                   <Upload size={32} className="text-gray-400 mb-2" />
-                  <p className="text-gray-600 dark:text-gray-300 font-medium">Drag & drop an EPUB file here</p>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">or click to select (max 50MB)</p>
+                  <p className="text-gray-600 dark:text-gray-300 font-medium">{t('editor.upload.dragDrop')}</p>
+                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">{t('editor.upload.clickSelect')}</p>
                 </div>
               )}
-            </div>
+            </label>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".epub"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-
-            {/* Progress indicator */}
             {importEpub.isPending && (
               <div className="mt-4">
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
                   <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 dark:border-blue-400 border-t-transparent"></div>
-                  <span className="text-sm">Uploading EPUB...</span>
+                  <span className="text-sm">{t('editor.upload.uploading')}</span>
                 </div>
               </div>
             )}
 
-            {/* Error display */}
             {importEpub.isError && (
               <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-                <p className="text-red-600 dark:text-red-400 text-sm">Failed to upload EPUB. Please try again.</p>
+                <p className="text-red-600 dark:text-red-400 text-sm">{t('editor.upload.failed')}</p>
               </div>
             )}
 
-            {/* Buttons */}
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={handleCancelUpload}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 disabled={importEpub.isPending}
               >
-                Cancel
+                {t('projects.create.cancel')}
               </button>
               <button
                 onClick={handleConfirmUpload}
@@ -395,19 +392,18 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Upload size={16} />
-                {importEpub.isPending ? 'Uploading...' : 'Upload EPUB'}
+                {importEpub.isPending ? t('editor.upload.submitting') : t('editor.upload.submit')}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Volume Confirmation */}
       <ConfirmDialog
         open={!!deleteVolumeConfirm}
-        title="Remove Volume"
-        message={`Are you sure you want to remove volume ${deleteVolumeConfirm}? This cannot be undone.`}
-        confirmText="Remove"
+        title={t('editor.remove.title')}
+        message={t('editor.remove.message', { number: deleteVolumeConfirm! })}
+        confirmText={t('editor.remove.confirm')}
         danger
         onConfirm={() => removeVolume.mutate({ projectId, volumeNumber: deleteVolumeConfirm! })}
         onCancel={() => setDeleteVolumeConfirm(null)}

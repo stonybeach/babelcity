@@ -116,21 +116,24 @@ def select_nav_file(manifest):
 
 
 def classify_item(item_id, info, spine, nav_id):
-    """Classify an item as Chapter, Nav, or Resource."""
+    """Classify an item as Chapter, Nav, or Resource.
+
+    Returns (item_type, spine_order) where spine_order is the 0-based index in spine or None.
+    """
     href = info.get("href", "")
     media_type = info.get("media_type", "")
     props = info.get("properties", "")
 
     # Nav file
     if item_id == nav_id:
-        return "Nav"
+        return "Nav", None
 
     # Chapter: in spine, xhtml, and not nav
     if href in spine and "xhtml" in media_type:
-        return "Chapter"
+        return "Chapter", spine.index(href)
 
     # Resource: everything else
-    return "Resource"
+    return "Resource", None
 
 
 def import_epub(volume_id, file_bytes, session):
@@ -153,7 +156,7 @@ def import_epub(volume_id, file_bytes, session):
         created_ids = []
         for item_id, info in manifest.items():
             href = info["href"]
-            item_type = classify_item(item_id, info, spine, nav_id)
+            item_type, spine_order = classify_item(item_id, info, spine, nav_id)
 
             # Read and compress content
             raw_content = zfile.read(href)
@@ -169,6 +172,7 @@ def import_epub(volume_id, file_bytes, session):
                 existing.content = compressed
                 existing.obsolete = False
                 existing.item_type = item_type
+                existing.spine_order = spine_order
                 created_ids.append(existing.id)
             else:
                 import uuid
@@ -178,6 +182,7 @@ def import_epub(volume_id, file_bytes, session):
                     full_path=href,
                     content=compressed,
                     item_type=item_type,
+                    spine_order=spine_order,
                     glossary_scanned=False,
                     obsolete=False,
                 )

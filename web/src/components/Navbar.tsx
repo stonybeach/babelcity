@@ -1,6 +1,7 @@
 import React from 'react'
 import { BookOpen, Wrench, ListTodo, Sun, Moon } from 'lucide-react'
 import { useTheme } from './ThemeProvider'
+import { useI18n } from '../i18n'
 
 type Tab = 'projects' | 'tasks' | 'jobs'
 
@@ -11,11 +12,12 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
   const { dark, toggle } = useTheme()
+  const { locale, setLocale, t } = useI18n()
 
   const tabs: { key: Tab; label: string; icon: any }[] = [
-    { key: 'projects', label: 'Projects', icon: BookOpen },
-    { key: 'tasks', label: 'Tasks', icon: Wrench },
-    { key: 'jobs', label: 'Jobs', icon: ListTodo },
+    { key: 'projects', label: t('nav.projects'), icon: BookOpen },
+    { key: 'tasks', label: t('nav.tasks'), icon: Wrench },
+    { key: 'jobs', label: t('nav.jobs'), icon: ListTodo },
   ]
 
   return (
@@ -53,12 +55,20 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onTabChange }) => {
         ))}
       </div>
 
-      <button
-        onClick={toggle}
-        className="p-2 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-      >
-        {dark ? <Sun size={20} /> : <Moon size={20} />}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setLocale(locale === 'en' ? 'zh' : 'en')}
+          className="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          {locale === 'en' ? '中' : 'En'}
+        </button>
+        <button
+          onClick={toggle}
+          className="p-2 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          {dark ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+      </div>
     </nav>
   )
 }

@@ -60,8 +60,8 @@ export const glossary = {
 export const chapters = {
   getNav: (volumeId: string, modelType?: string, qaRound: number = 0) =>
     api.get(`/chapters/volumes/${volumeId}/nav`, { params: { model_type: modelType, qa_round: qaRound } }).then(r => r.data),
-  getTOC: (volumeId: string) =>
-    api.get(`/chapters/volumes/${volumeId}/toc`).then(r => r.data),
+  getTOC: (volumeId: string, modelType?: string, qaRound: number = 0) =>
+    api.get(`/chapters/volumes/${volumeId}/toc`, { params: { model_type: modelType, qa_round: qaRound } }).then(r => r.data),
   getChapter: (volumeId: string, itemId: string, modelType?: string, qaRound: number = 0) =>
     api.get(`/chapters/volumes/${volumeId}/items/${itemId}`, { params: { model_type: modelType, qa_round: qaRound } }).then(r => r.data),
   getMeta: (volumeId: string, itemId: string) => api.get(`/chapters/volumes/${volumeId}/items/${itemId}/meta`).then(r => r.data),

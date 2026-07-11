@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './components/ThemeProvider'
+import { I18nProvider } from './i18n'
 import { Navbar } from './components/Navbar'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectEditor } from './pages/ProjectEditor'
@@ -48,6 +49,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <I18nProvider>
       <ThemeProvider>
         <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
           <Navbar activeTab={activeTab} onTabChange={setActiveTab} />
@@ -83,6 +85,7 @@ function App() {
           </main>
         </div>
       </ThemeProvider>
+      </I18nProvider>
     </QueryClientProvider>
   )
 }

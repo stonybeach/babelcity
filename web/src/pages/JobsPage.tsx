@@ -6,8 +6,10 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
 import { useJobWebSocket } from '../hooks/useJobWebSocket'
 import { type Job, type TaskDefinition, type Project } from '../types'
+import { useI18n } from '../i18n'
 
 export const JobsPage: React.FC = () => {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [formType, setFormType] = useState<'Glossary' | 'Translation' | 'QA'>('Glossary')
@@ -100,9 +102,9 @@ export const JobsPage: React.FC = () => {
   }
 
   const handleSubmit = () => {
-    if (!form.project_id) { setErrorToast('Please select a project'); return }
-    if (!form.volume_number) { setErrorToast('Please select a volume'); return }
-    if (!form.task_id) { setErrorToast('Please select a task definition'); return }
+    if (!form.project_id) { setErrorToast(t('jobs.error.selectProject')); return }
+    if (!form.volume_number) { setErrorToast(t('jobs.error.selectVolume')); return }
+    if (!form.task_id) { setErrorToast(t('jobs.error.selectTask')); return }
 
     const filteredForm: any = {
       project_id: form.project_id,
@@ -126,32 +128,48 @@ export const JobsPage: React.FC = () => {
   const filteredTasks = (tasks as TaskDefinition[]).filter((t: TaskDefinition) => t.config_type === formType)
   const selectedProject = selectedProjectData
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading jobs...</div>
+  const typeDisplay = (val: string) => {
+    const v = val.toLowerCase()
+    if (v === 'glossary') return t('tasks.type.glossary')
+    if (v === 'translation') return t('tasks.type.translation')
+    if (v === 'qa') return t('tasks.type.qa')
+    return val
+  }
+
+  const statusDisplay = (val: string) => {
+    if (val === 'Pending') return t('jobs.status.pending')
+    if (val === 'Running') return t('jobs.status.running')
+    if (val === 'Completed') return t('jobs.status.completed')
+    if (val === 'Failed') return t('jobs.status.failed')
+    return val
+  }
+
+  if (isLoading) return <div className="p-8 text-center text-gray-500">{t('jobs.loading')}</div>
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Jobs</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('jobs.title')}</h2>
       </div>
 
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <button onClick={() => handleCreateClick('Glossary')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-            <Plus size={16} /> Glossary Job
+            <Plus size={16} /> {t('jobs.addGlossary')}
           </button>
           <button onClick={() => handleCreateClick('Translation')} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-            <Plus size={16} /> Translation Job
+            <Plus size={16} /> {t('jobs.addTranslation')}
           </button>
           <button onClick={() => handleCreateClick('QA')} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">
-            <Plus size={16} /> QA Job
+            <Plus size={16} /> {t('jobs.addQA')}
           </button>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => startQueue.mutate()} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-            <Play size={16} /> Start
+            <Play size={16} /> {t('jobs.start')}
           </button>
           <button onClick={() => pauseQueue.mutate()} className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700">
-            <Pause size={16} /> Pause
+            <Pause size={16} /> {t('jobs.pause')}
           </button>
         </div>
       </div>
@@ -160,12 +178,12 @@ export const JobsPage: React.FC = () => {
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Type</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Project</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Volume</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Progress</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.type')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.project')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.volume')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.status')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.progress')}</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -177,7 +195,7 @@ export const JobsPage: React.FC = () => {
                     j.job_type === 'Translation' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                     'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
                   }`}>
-                    {j.job_type}
+                    {typeDisplay(j.job_type)}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{j.project_name}</td>
@@ -189,7 +207,7 @@ export const JobsPage: React.FC = () => {
                     j.status === 'Failed' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
                     'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                   }`}>
-                    {j.status}
+                    {statusDisplay(j.status)}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
@@ -201,9 +219,9 @@ export const JobsPage: React.FC = () => {
                       <span className="text-xs">{j.current}/{j.total}</span>
                     </div>
                   ) : j.status === 'Completed' ? (
-                    <span className="text-green-600 dark:text-green-400">Done</span>
+                    <span className="text-green-600 dark:text-green-400">{t('jobs.progress.done')}</span>
                   ) : j.status === 'Failed' ? (
-                    <span className="text-red-600 dark:text-red-400" title={j.result_message || 'Error'}>Failed</span>
+                    <span className="text-red-600 dark:text-red-400" title={j.result_message || 'Error'}>{t('jobs.progress.failed')}</span>
                   ) : (
                     <span className="text-gray-400">-</span>
                   )}
@@ -212,26 +230,26 @@ export const JobsPage: React.FC = () => {
                   <div className="flex items-center justify-end gap-1">
                     {j.status === 'Pending' && (
                       <>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'up' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move up"><ArrowUp size={14} /></button>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'down' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move down"><ArrowDown size={14} /></button>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'top' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move to top"><ArrowUpToLine size={14} /></button>
-                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'bottom' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title="Move to bottom"><ArrowDownToLine size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'up' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title={t('jobs.move.up')}><ArrowUp size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'down' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title={t('jobs.move.down')}><ArrowDown size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'top' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title={t('jobs.move.top')}><ArrowUpToLine size={14} /></button>
+                        <button onClick={() => moveJob.mutate({ id: j.id, direction: 'bottom' })} className="p-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300" title={t('jobs.move.bottom')}><ArrowDownToLine size={14} /></button>
                       </>
                     )}
                     {j.status === 'Completed' && (
-                      <button onClick={() => repeatJob.mutate(j.id)} className="p-1 text-gray-500 hover:text-green-600" title="Repeat"><Repeat size={14} /></button>
+                      <button onClick={() => repeatJob.mutate(j.id)} className="p-1 text-gray-500 hover:text-green-600" title={t('jobs.repeat')}><Repeat size={14} /></button>
                     )}
                     {j.status === 'Failed' && (
-                      <button onClick={() => repeatJob.mutate(j.id)} className="p-1 text-red-500 hover:text-red-600" title="Repeat (Failed)"><Repeat size={14} /></button>
+                      <button onClick={() => repeatJob.mutate(j.id)} className="p-1 text-red-500 hover:text-red-600" title={t('jobs.repeatFailed')}><Repeat size={14} /></button>
                     )}
-                    <button onClick={() => setDeleteConfirm(j.id)} className="p-1 text-gray-500 hover:text-red-600" title="Delete"><Trash2 size={14} /></button>
+                    <button onClick={() => setDeleteConfirm(j.id)} className="p-1 text-gray-500 hover:text-red-600" title={t('jobs.delete')}><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {jobs.length === 0 && <div className="p-8 text-center text-gray-400">No jobs in the queue.</div>}
+        {jobs.length === 0 && <div className="p-8 text-center text-gray-400">{t('jobs.empty')}</div>}
       </div>
 
       {/* Job Form Modal */}
@@ -239,35 +257,35 @@ export const JobsPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Add {formType} Job</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('jobs.form.title', { type: formType === 'Glossary' ? t('tasks.type.glossary') : formType === 'Translation' ? t('tasks.type.translation') : t('tasks.type.qa') })}</h3>
               <button onClick={resetForm}><X size={20} className="text-gray-400" /></button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.project')}</label>
                 <select value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value, volume_number: '' }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                  <option value="">Select project</option>
+                  <option value="">{t('jobs.form.selectProject')}</option>
                   {projects.sort((a: Project, b: Project) => a.project_name.localeCompare(b.project_name)).map((p: Project) => (
                     <option key={p.id} value={p.id}>{p.project_name}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Volume *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.volume')}</label>
                 <select value={form.volume_number} onChange={e => setForm(f => ({ ...f, volume_number: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                  <option value="">Select volume</option>
+                  <option value="">{t('jobs.form.selectVolume')}</option>
                   {selectedProject?.volumes.sort((a, b) => a.volume_number.localeCompare(b.volume_number)).map(v => (
                     <option key={v.id} value={v.volume_number}>{v.volume_number}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{formType} Config *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.config', { type: formType === 'Glossary' ? t('tasks.type.glossary') : formType === 'Translation' ? t('tasks.type.translation') : t('tasks.type.qa') })}</label>
                 <select value={form.task_id} onChange={e => setForm(f => ({ ...f, task_id: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                  <option value="">Select config</option>
+                  <option value="">{t('jobs.form.selectConfig')}</option>
                   {filteredTasks.sort((a: TaskDefinition, b: TaskDefinition) => a.config_name.localeCompare(b.config_name)).map(t => (
                     <option key={t.id} value={t.id}>{t.config_name}</option>
                   ))}
@@ -277,33 +295,33 @@ export const JobsPage: React.FC = () => {
                 <>
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={form.resume} onChange={e => setForm(f => ({ ...f, resume: e.target.checked }))} />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Resume (skip scanned)</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{t('jobs.form.resumeScanned')}</span>
                   </label>
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={form.add_only} onChange={e => setForm(f => ({ ...f, add_only: e.target.checked }))} />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Add only (don't remove)</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{t('jobs.form.addOnly')}</span>
                   </label>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pre-translated terms</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.preTranslated')}</label>
                     <textarea value={form.pre_translated_terms} onChange={e => setForm(f => ({ ...f, pre_translated_terms: e.target.value }))}
                       rows={4} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                      placeholder="Source => Translation # Comment" />
+                      placeholder={t('jobs.form.preTranslatedPlaceholder')} />
                   </div>
                 </>
               )}
               {formType === 'Translation' && (
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={form.resume} onChange={e => setForm(f => ({ ...f, resume: e.target.checked }))} />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Resume (skip translated)</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{t('jobs.form.resumeTranslated')}</span>
                 </label>
               )}
               {formType === 'QA' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Translation Model Type</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.translationModel')}</label>
                     <select value={form.translation_model_type} onChange={e => setForm(f => ({ ...f, translation_model_type: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                      <option value="">Select model type</option>
+                      <option value="">{t('jobs.form.selectModel')}</option>
                       {(availableModels || []).sort().map(m => (
                         <option key={m} value={m}>{m}</option>
                       ))}
@@ -311,12 +329,12 @@ export const JobsPage: React.FC = () => {
                   </div>
                   <div className="flex gap-4">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Version</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.startVersion')}</label>
                       <input type="number" value={form.start_version} onChange={e => setForm(f => ({ ...f, start_version: parseInt(e.target.value) || 0 }))}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of Passes</label>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('jobs.form.numPasses')}</label>
                       <input type="number" value={form.num_passes} onChange={e => setForm(f => ({ ...f, num_passes: parseInt(e.target.value) || 1 }))}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
                     </div>
@@ -325,10 +343,10 @@ export const JobsPage: React.FC = () => {
               )}
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={resetForm} className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
+              <button onClick={resetForm} className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">{t('projects.create.cancel')}</button>
               <button onClick={handleSubmit} disabled={!form.project_id || !form.volume_number || !form.task_id}
                 className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-                Add Job
+                {t('jobs.form.submit')}
               </button>
             </div>
           </div>
@@ -337,9 +355,9 @@ export const JobsPage: React.FC = () => {
 
       <ConfirmDialog
         open={!!deleteConfirm}
-        title="Delete Job"
-        message="Are you sure you want to remove this job?"
-        confirmText="Delete" danger
+        title={t('jobs.delete.title')}
+        message={t('jobs.delete.message')}
+        confirmText={t('projects.action.delete')} danger
         onConfirm={() => { if (deleteConfirm) { removeJob.mutate(deleteConfirm); setDeleteConfirm(null) } }}
         onCancel={() => setDeleteConfirm(null)}
       />

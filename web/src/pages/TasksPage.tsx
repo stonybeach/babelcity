@@ -6,8 +6,10 @@ import { TaskDefinition } from '../types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
 import { SuccessToast } from '../components/SuccessToast'
+import { useI18n } from '../i18n'
 
 export const TasksPage: React.FC = () => {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const [filterType, setFilterType] = useState<string>('')
   const [editingTask, setEditingTask] = useState<TaskDefinition | null>(null)
@@ -64,20 +66,20 @@ export const TasksPage: React.FC = () => {
 
   const handleSave = () => {
     if (!form.config_name || !form.config_name.trim()) {
-      setErrorToast('Config Name is required')
+      setErrorToast(t('tasks.error.configName'))
       return
     }
     if (!form.model || !form.model.trim()) {
-      setErrorToast('Model is required')
+      setErrorToast(t('tasks.error.model'))
       return
     }
     if (!form.base_url || !form.base_url.trim()) {
-      setErrorToast('Base URL is required')
+      setErrorToast(t('tasks.error.baseUrl'))
       return
     }
     const cfgType = (form.config_type || '').toLowerCase()
     if ((cfgType === 'translation' || cfgType === 'qa') && (!form.model_type || !form.model_type.trim())) {
-      setErrorToast('Model Type is required for ' + (form.config_type || '') + ' tasks')
+      setErrorToast(t('tasks.error.modelType', { type: form.config_type || '' }))
       return
     }
     const normalizedForm = { ...form, config_type: cfgType === 'qa' ? 'QA' : (form.config_type || '').charAt(0).toUpperCase() + (form.config_type || '').slice(1) }
@@ -127,7 +129,7 @@ export const TasksPage: React.FC = () => {
 
   const handleTestConnection = async () => {
     if (!form.base_url || !form.api_key || !form.model) {
-      setErrorToast('Base URL, API Key, and Model are required to test connection')
+      setErrorToast(t('tasks.error.testFields'))
       return
     }
     setTestStatus('testing')
@@ -147,6 +149,14 @@ export const TasksPage: React.FC = () => {
     }
   }
 
+  const typeDisplay = (val: string) => {
+    const v = val.toLowerCase()
+    if (v === 'glossary') return t('tasks.type.glossary')
+    if (v === 'translation') return t('tasks.type.translation')
+    if (v === 'qa') return t('tasks.type.qa')
+    return val
+  }
+
   const inputClass = "w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
   const labelClass = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
 
@@ -158,31 +168,31 @@ export const TasksPage: React.FC = () => {
       <>
         <div className="p-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{isEditing ? 'Edit Task Definition' : 'New Task Definition'}</h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{isEditing ? t('tasks.editTitle') : t('tasks.newTitle')}</h2>
           <div className="flex gap-3">
             <button onClick={handleSave} className="flex items-center gap-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-              <Save size={16} /> Save
+              <Save size={16} /> {t('tasks.save')}
             </button>
             <button onClick={() => { setEditingTask(null); setForm({}) }} className="flex items-center gap-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-              <X size={16} /> Cancel
+              <X size={16} /> {t('tasks.cancel')}
             </button>
           </div>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 grid grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Config Name</label>
+            <label className={labelClass}>{t('tasks.field.configName')}</label>
             <input className={inputClass} value={form.config_name || ''} onChange={e => setForm({ ...form, config_name: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>Config Type</label>
+            <label className={labelClass}>{t('tasks.field.configType')}</label>
             <select className={inputClass} value={form.config_type || 'Translation'} onChange={e => setForm({ ...form, config_type: e.target.value })}>
-              <option value="Glossary">Glossary</option>
-              <option value="Translation">Translation</option>
-              <option value="QA">QA</option>
+              <option value="Glossary">{t('tasks.type.glossary')}</option>
+              <option value="Translation">{t('tasks.type.translation')}</option>
+              <option value="QA">{t('tasks.type.qa')}</option>
             </select>
           </div>
           <div className="col-span-2">
-            <label className={labelClass}>Base URL</label>
+            <label className={labelClass}>{t('tasks.field.baseUrl')}</label>
             <div className="flex gap-2">
               <input
                 className={`${inputClass} flex-1 ${testStatus === 'success' ? '!bg-green-100 dark:!bg-green-900' : testStatus === 'error' ? '!bg-red-100 dark:!bg-red-900' : ''}`}
@@ -194,85 +204,85 @@ export const TasksPage: React.FC = () => {
                 disabled={testStatus === 'testing'}
                 className="flex items-center gap-1 px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
-                <Zap size={16} /> {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+                <Zap size={16} /> {testStatus === 'testing' ? t('tasks.testing') : t('tasks.testConnection')}
               </button>
             </div>
           </div>
           <div>
-            <label className={labelClass}>API Key</label>
+            <label className={labelClass}>{t('tasks.field.apiKey')}</label>
             <input className={inputClass} type="password" value={form.api_key || ''} onChange={e => setForm({ ...form, api_key: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>Model</label>
+            <label className={labelClass}>{t('tasks.field.model')}</label>
             <input className={inputClass} value={form.model || ''} onChange={e => setForm({ ...form, model: e.target.value })} />
           </div>
           <div>
-            <label className={labelClass}>Max Tokens</label>
+            <label className={labelClass}>{t('tasks.field.maxTokens')}</label>
             <input className={inputClass} type="number" value={form.max_tokens || 4096} onChange={e => setForm({ ...form, max_tokens: parseInt(e.target.value) || 4096 })} />
           </div>
           <div>
-            <label className={labelClass}>Temperature</label>
+            <label className={labelClass}>{t('tasks.field.temperature')}</label>
             <input className={inputClass} type="number" step="0.1" value={form.temperature ?? ''} onChange={e => setForm({ ...form, temperature: e.target.value ? parseFloat(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Top P</label>
+            <label className={labelClass}>{t('tasks.field.topP')}</label>
             <input className={inputClass} type="number" step="0.01" value={form.top_p ?? ''} onChange={e => setForm({ ...form, top_p: e.target.value ? parseFloat(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Min P</label>
+            <label className={labelClass}>{t('tasks.field.minP')}</label>
             <input className={inputClass} type="number" step="0.01" value={form.min_p ?? ''} onChange={e => setForm({ ...form, min_p: e.target.value ? parseFloat(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Top K</label>
+            <label className={labelClass}>{t('tasks.field.topK')}</label>
             <input className={inputClass} type="number" value={form.top_k ?? ''} onChange={e => setForm({ ...form, top_k: e.target.value ? parseInt(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Presence Penalty</label>
+            <label className={labelClass}>{t('tasks.field.presencePenalty')}</label>
             <input className={inputClass} type="number" step="0.1" value={form.presence_penalty ?? ''} onChange={e => setForm({ ...form, presence_penalty: e.target.value ? parseFloat(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Frequency Penalty</label>
+            <label className={labelClass}>{t('tasks.field.frequencyPenalty')}</label>
             <input className={inputClass} type="number" step="0.1" value={form.frequency_penalty ?? ''} onChange={e => setForm({ ...form, frequency_penalty: e.target.value ? parseFloat(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Repetition Penalty</label>
+            <label className={labelClass}>{t('tasks.field.repetitionPenalty')}</label>
             <input className={inputClass} type="number" step="0.01" value={form.repetition_penalty ?? ''} onChange={e => setForm({ ...form, repetition_penalty: e.target.value ? parseFloat(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Chunk Size</label>
+            <label className={labelClass}>{t('tasks.field.chunkSize')}</label>
             <input className={inputClass} type="number" value={form.chunk_size || 2000} onChange={e => setForm({ ...form, chunk_size: parseInt(e.target.value) || 2000 })} />
           </div>
           <div>
-            <label className={labelClass}>History</label>
+            <label className={labelClass}>{t('tasks.field.history')}</label>
             <input className={inputClass} type="number" value={form.history ?? ''} disabled={isGlossary || isQA} onChange={e => setForm({ ...form, history: e.target.value ? parseInt(e.target.value) : null })} />
           </div>
           <div>
-            <label className={labelClass}>Threads</label>
+            <label className={labelClass}>{t('tasks.field.threads')}</label>
             <input className={inputClass} type="number" value={isGlossary ? 1 : (form.threads || 1)} disabled={isGlossary} onChange={e => setForm({ ...form, threads: parseInt(e.target.value) || 1 })} />
           </div>
           <div>
-            <label className={labelClass}>Retry Attempts</label>
+            <label className={labelClass}>{t('tasks.field.retryAttempts')}</label>
             <input className={inputClass} type="number" value={form.retry_attempts || 3} onChange={e => setForm({ ...form, retry_attempts: parseInt(e.target.value) || 3 })} />
           </div>
           <div>
-            <label className={labelClass}>Model Type</label>
+            <label className={labelClass}>{t('tasks.field.modelType')}</label>
             <input className={inputClass} value={form.model_type || ''} disabled={isGlossary} onChange={e => setForm({ ...form, model_type: e.target.value })} />
           </div>
           <div className="col-span-2">
-            <label className={labelClass}>Override System Prompt</label>
+            <label className={labelClass}>{t('tasks.field.overridePrompt')}</label>
             <textarea className={inputClass} rows={3} value={form.override_system_prompt || ''} disabled onChange={e => setForm({ ...form, override_system_prompt: e.target.value || null })} />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={!!form.use_mini_glossary} disabled={isGlossary} onChange={e => setForm({ ...form, use_mini_glossary: e.target.checked })} />
-            <label className="text-sm text-gray-700 dark:text-gray-300">Use Mini Glossary</label>
+            <label className="text-sm text-gray-700 dark:text-gray-300">{t('tasks.field.useMiniGlossary')}</label>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={!!form.synchronize_quotes} onChange={e => setForm({ ...form, synchronize_quotes: e.target.checked })} />
-            <label className="text-sm text-gray-700 dark:text-gray-300">Synchronize Quotes</label>
+            <label className="text-sm text-gray-700 dark:text-gray-300">{t('tasks.field.syncQuotes')}</label>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={!!form.traditional_chinese} onChange={e => setForm({ ...form, traditional_chinese: e.target.checked })} />
-            <label className="text-sm text-gray-700 dark:text-gray-300">Traditional Chinese</label>
+            <label className="text-sm text-gray-700 dark:text-gray-300">{t('tasks.field.traditionalChinese')}</label>
           </div>
         </div>
       </div>
@@ -285,37 +295,36 @@ export const TasksPage: React.FC = () => {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Task Definitions</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('tasks.title')}</h2>
       </div>
 
-      {/* Button bar with 3 add buttons */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => createTask('glossary')} className="flex items-center gap-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-          <Plus size={16} /> Glossary Config
+          <Plus size={16} /> {t('tasks.addGlossary')}
         </button>
         <button onClick={() => createTask('translation')} className="flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-          <Plus size={16} /> Translation Config
+          <Plus size={16} /> {t('tasks.addTranslation')}
         </button>
         <button onClick={() => createTask('qa')} className="flex items-center gap-1 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">
-          <Plus size={16} /> QA Config
+          <Plus size={16} /> {t('tasks.addQA')}
         </button>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Loading...</div>
+        <div className="text-center py-12 text-gray-500">{t('tasks.loading')}</div>
       ) : !taskDefs || taskDefs.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">No task definitions found.</div>
+        <div className="text-center py-12 text-gray-500">{t('tasks.empty')}</div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Model</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Threads</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Default</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('tasks.table.name')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('tasks.table.type')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('tasks.table.model')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('tasks.table.threads')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('tasks.table.default')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('tasks.table.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -324,17 +333,17 @@ export const TasksPage: React.FC = () => {
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{task.config_name}</td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-1 rounded-full text-xs ${task.config_type === 'translation' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
-                      {task.config_type}
+                      {typeDisplay(task.config_type)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{task.model}</td>
                   <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{task.threads}</td>
                   <td className="px-4 py-3 text-sm">
                     {task.is_default ? (
-                      <span className="text-yellow-500">★ Default</span>
+                      <span className="text-yellow-500">{t('tasks.isDefault')}</span>
                     ) : (
                       <button onClick={() => handleSetDefault(task)} className="text-yellow-500 hover:text-yellow-600">
-                        <Star size={14} /> Set Default
+                        <Star size={14} /> {t('tasks.setDefault')}
                       </button>
                     )}
                   </td>
@@ -355,9 +364,9 @@ export const TasksPage: React.FC = () => {
 
       <ConfirmDialog
         open={!!deleteConfirm}
-        title="Delete Task Definition"
-        message="Are you sure you want to delete this task definition? This cannot be undone."
-        confirmText="Delete"
+        title={t('tasks.delete.title')}
+        message={t('tasks.delete.message')}
+        confirmText={t('projects.action.delete')}
         danger
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm(null)}

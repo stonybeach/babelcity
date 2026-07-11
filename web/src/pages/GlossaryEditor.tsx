@@ -5,6 +5,7 @@ import { glossary as glossaryApi } from '../services/api'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
+import { useI18n } from '../i18n'
 
 interface GlossaryEditorProps {
   projectId: string
@@ -12,6 +13,7 @@ interface GlossaryEditorProps {
 }
 
 export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBack }) => {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const [gridApi, setGridApi] = useState<any>(null)
   const [rowData, setRowData] = useState<any[]>([])
@@ -76,51 +78,53 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   }
 
   const columnDefs = [
-    { field: 'term', headerName: 'Original Term', editable: true, minWidth: 150, checkboxSelection: true },
-    { field: 'translated_name', headerName: 'Translated Name', editable: true, minWidth: 150 },
-    { field: 'type', headerName: 'Type', editable: true, minWidth: 100 },
-    { field: 'gender', headerName: 'Gender', editable: true, minWidth: 100 },
+    { field: 'term', headerName: t('glossary.col.term'), editable: true, minWidth: 150, checkboxSelection: true },
+    { field: 'translated_name', headerName: t('glossary.col.translatedName'), editable: true, minWidth: 150 },
+    { field: 'type', headerName: t('glossary.col.type'), editable: true, minWidth: 100 },
+    { field: 'gender', headerName: t('glossary.col.gender'), editable: true, minWidth: 100 },
   ]
 
-  if (isLoading) return <div className="p-8 text-center text-gray-500">Loading glossary...</div>
+  if (isLoading) return <div className="p-8 text-center text-gray-500">{t('glossary.loading')}</div>
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
-          ← Back to Projects
-        </button>
-        <div className="flex items-center gap-3">
-          {unsaved && <span className="text-sm text-yellow-600 dark:text-yellow-400">Unsaved changes</span>}
-          <button
-            onClick={handleSave}
-            disabled={!unsaved || saveMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-          >
-            <Save size={16} /> {saveMutation.isPending ? 'Saving...' : 'Save'}
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
+      <div className="p-6 flex flex-col flex-1 min-h-0">
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
+            {t('glossary.back')}
           </button>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <button onClick={addRow} className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
-            <Plus size={14} /> Add
-          </button>
-          <button onClick={deleteSelected} className="flex items-center gap-1 px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700">
-            <Trash2 size={14} /> Delete Selected
-          </button>
+          <div className="flex items-center gap-3">
+            {unsaved && <span className="text-sm text-yellow-600 dark:text-yellow-400">{t('glossary.unsaved')}</span>}
+            <button
+              onClick={handleSave}
+              disabled={!unsaved || saveMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+            >
+              <Save size={16} /> {saveMutation.isPending ? t('glossary.saving') : t('glossary.save')}
+            </button>
+          </div>
         </div>
 
-        <div className="ag-theme-alpine dark:bg-gray-700" style={{ height: 500, width: '100%' }}>
-          <AgGridReact
-            rowData={rowData}
-            columnDefs={columnDefs}
-            onGridReady={params => setGridApi(params.api)}
-            onCellEditingStopped={onCellChanged}
-            defaultColDef={{ resizable: true, sortable: true, filter: true }}
-            rowSelection={{ mode: 'multiRow' }}
-          />
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col flex-1 min-h-0">
+          <div className="flex items-center gap-3 mb-3">
+            <button onClick={addRow} className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700">
+              <Plus size={14} /> {t('glossary.add')}
+            </button>
+            <button onClick={deleteSelected} className="flex items-center gap-1 px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700">
+              <Trash2 size={14} /> {t('glossary.deleteSelected')}
+            </button>
+          </div>
+
+          <div className="ag-theme-alpine dark:bg-gray-700 flex-1 min-h-0">
+            <AgGridReact
+              rowData={rowData}
+              columnDefs={columnDefs}
+              onGridReady={params => setGridApi(params.api)}
+              onCellEditingStopped={onCellChanged}
+              defaultColDef={{ resizable: true, sortable: true, filter: true }}
+              rowSelection={{ mode: 'multiRow' }}
+            />
+          </div>
         </div>
       </div>
     </div>
