@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
-import { Edit, Trash2, Star, Plus, Save, X } from 'lucide-react'
+import { Edit, Trash2, Star, Plus, Save, X, Zap } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tasks as tasksApi } from '../services/api'
 import { TaskDefinition } from '../types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
+import { SuccessToast } from '../components/SuccessToast'
 
 export const TasksPage: React.FC = () => {
   const queryClient = useQueryClient()
@@ -13,6 +14,8 @@ export const TasksPage: React.FC = () => {
   const [form, setForm] = useState<Partial<TaskDefinition>>({})
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [errorToast, setErrorToast] = useState<string | null>(null)
+  const [successToast, setSuccessToast] = useState<string | null>(null)
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
 
   const { data: taskDefs, isLoading } = useQuery({
     queryKey: ['tasks', filterType],
@@ -122,6 +125,28 @@ export const TasksPage: React.FC = () => {
     setDefaultMutation.mutate(task.id)
   }
 
+  const handleTestConnection = async () => {
+    if (!form.base_url || !form.api_key || !form.model) {
+      setErrorToast('Base URL, API Key, and Model are required to test connection')
+      return
+    }
+    setTestStatus('testing')
+    try {
+      const result = await tasksApi.testConnection({
+        base_url: form.base_url,
+        api_key: form.api_key,
+        model: form.model,
+      })
+      if (result.success) {
+        setTestStatus('success')
+        setSuccessToast(result.message || 'Connection successful!')
+      }
+    } catch (err: any) {
+      setTestStatus('error')
+      setErrorToast(err.response?.data?.detail || 'Connection failed')
+    }
+  }
+
   const inputClass = "w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
   const labelClass = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
 
@@ -156,9 +181,22 @@ export const TasksPage: React.FC = () => {
               <option value="QA">QA</option>
             </select>
           </div>
-          <div>
+          <div className="col-span-2">
             <label className={labelClass}>Base URL</label>
-            <input className={inputClass} value={form.base_url || ''} onChange={e => setForm({ ...form, base_url: e.target.value })} />
+            <div className="flex gap-2">
+              <input
+                className={`${inputClass} flex-1 ${testStatus === 'success' ? '!bg-green-100 dark:!bg-green-900' : testStatus === 'error' ? '!bg-red-100 dark:!bg-red-900' : ''}`}
+                value={form.base_url || ''}
+                onChange={e => { setForm({ ...form, base_url: e.target.value }); setTestStatus('idle') }}
+              />
+              <button
+                onClick={handleTestConnection}
+                disabled={testStatus === 'testing'}
+                className="flex items-center gap-1 px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <Zap size={16} /> {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+              </button>
+            </div>
           </div>
           <div>
             <label className={labelClass}>API Key</label>
@@ -239,6 +277,7 @@ export const TasksPage: React.FC = () => {
         </div>
       </div>
       {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
+      {successToast && <SuccessToast message={successToast} onClose={() => setSuccessToast(null)} />}
     </>
     )
   }

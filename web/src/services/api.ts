@@ -35,6 +35,7 @@ export const tasks = {
   update: (id: string, data: any) => api.put(`/tasks/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/tasks/${id}`).then(r => r.data),
   setDefault: (id: string) => api.post(`/tasks/${id}/default`).then(r => r.data),
+  testConnection: (data: { base_url: string, api_key: string, model: string }) => api.post('/tasks/test-connection', data).then(r => r.data),
 }
 
 export const jobs = {

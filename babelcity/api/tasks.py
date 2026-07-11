@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database import get_session
+from ..llm_handler import _create_client
 from ..models import TaskDefinition
 from pydantic import BaseModel
 
@@ -179,3 +180,27 @@ def set_default(task_id: str, db: Session = Depends(get_db)):
     task.is_default = True
     db.commit()
     return {"message": "Default task set"}
+
+
+class TestConnectionRequest(BaseModel):
+    base_url: str
+    api_key: str
+    model: str
+
+
+@router.post("/test-connection")
+def test_connection(data: TestConnectionRequest):
+    try:
+        client = _create_client(data.base_url, data.api_key)
+        response = client.chat.completions.create(
+            model=data.model,
+            messages=[{"role": "user", "content": "Say hello in 5 words or less."}],
+            max_tokens=32,
+            temperature=0.5,
+        )
+        return {
+            "success": True,
+            "message": f"Connected successfully. Model responded: {response.choices[0].message.content}",
+        }
+    except Exception as e:
+        raise HTTPException(400, f"Connection failed: {str(e)}")

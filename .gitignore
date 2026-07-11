@@ -12,3 +12,4 @@ dist/
 .DS_Store
 opencode*.json
 example_glossary.txt
+.venv/
