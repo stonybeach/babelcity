@@ -48,9 +48,10 @@ python -m babelcity.main
 
 The application will be available at `http://localhost:8000`.
 
-## How It Works
+## How to Use
 
-- Import EPUB files or web novels as projects
+- Create a new Project and add volumes
+- Import the EPUB file for each volume
 - Configure LLM task definitions (Glossary, Translation, QA)
 - Create and queue translation/QA jobs
 - Monitor job progress in real-time via WebSocket
