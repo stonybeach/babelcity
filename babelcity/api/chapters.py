@@ -114,6 +114,10 @@ def get_nav(
             if isinstance(content, bytes):
                 content = decompress(content)
 
+    is_ncx = nav_item.full_path.lower().endswith(".ncx")
+    if is_ncx:
+        return Response(content=content, media_type="application/xml")
+
     content = rewrite_resource_paths(content, volume_id, "/api/v1", nav_item.full_path)
     return Response(content=content, media_type="application/xhtml+xml")
 
@@ -164,28 +168,55 @@ def get_toc(
                     nav_content = decompress(nav_content)
 
         nav_dir = os.path.dirname(nav_item.full_path)
+        is_ncx = nav_item.full_path.lower().endswith(".ncx")
         try:
             nav_tree = lxml_etree.fromstring(nav_content if isinstance(nav_content, bytes) else nav_content.encode("utf-8"))
-            ns = {'h': 'http://www.w3.org/1999/xhtml'}
-            for link in nav_tree.xpath('//h:a[@href]', namespaces=ns) or nav_tree.xpath('//a[@href]'):
-                href = link.get("href", "")
-                link_text = link.text or ""
-                for child in link:
-                    if child.text:
-                        link_text += child.text
-                    for gc in child.iter():
-                        if gc.text:
-                            link_text += gc.text
-                link_text = link_text.strip()
-                if not href:
-                    continue
-                if href.startswith("/"):
-                    full_path = href.split("#")[0]
-                else:
+
+            if is_ncx:
+                ncx_ns = {'ncx': 'http://www.daisy.org/z3986/2005/ncx/'}
+                nav_points = nav_tree.xpath('//ncx:navPoint', namespaces=ncx_ns)
+                if not nav_points:
+                    nav_points = nav_tree.xpath('//*[local-name()="navPoint"]')
+                for np in nav_points:
+                    label = np.xpath('.//ncx:navLabel/ncx:text', namespaces=ncx_ns)
+                    if not label:
+                        label = np.xpath('.//*[local-name()="navLabel"]/*[local-name()="text"]')
+                    if not label:
+                        continue
+                    link_text = "".join(label[0].itertext()).strip()
+                    content_el = np.xpath('.//ncx:content', namespaces=ncx_ns)
+                    if not content_el:
+                        content_el = np.xpath('.//*[local-name()="content"]')
+                    if not content_el:
+                        continue
+                    href = content_el[0].get("src", "")
+                    if not href:
+                        continue
                     path_only = href.split("#")[0]
                     full_path = os.path.normpath(os.path.join(nav_dir, path_only)).replace("\\", "/")
-                if link_text:
-                    name_map[full_path] = link_text
+                    if link_text:
+                        name_map[full_path] = link_text
+            else:
+                ns = {'h': 'http://www.w3.org/1999/xhtml'}
+                for link in nav_tree.xpath('//h:a[@href]', namespaces=ns) or nav_tree.xpath('//a[@href]'):
+                    href = link.get("href", "")
+                    link_text = link.text or ""
+                    for child in link:
+                        if child.text:
+                            link_text += child.text
+                        for gc in child.iter():
+                            if gc.text:
+                                link_text += gc.text
+                    link_text = link_text.strip()
+                    if not href:
+                        continue
+                    if href.startswith("/"):
+                        full_path = href.split("#")[0]
+                    else:
+                        path_only = href.split("#")[0]
+                        full_path = os.path.normpath(os.path.join(nav_dir, path_only)).replace("\\", "/")
+                    if link_text:
+                        name_map[full_path] = link_text
         except Exception:
             pass
 

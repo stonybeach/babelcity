@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Save, X, Plus, Trash2, Copy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { glossary as glossaryApi } from '../services/api'
+import { glossary as glossaryApi, projects as projectsApi } from '../services/api'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -23,6 +23,11 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   const { data: glossaryData, isLoading } = useQuery({
     queryKey: ['glossary', projectId],
     queryFn: () => glossaryApi.get(projectId),
+  })
+
+  const { data: project } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => projectsApi.get(projectId),
   })
 
   const saveMutation = useMutation({
@@ -105,10 +110,13 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
       <div className="p-6 flex flex-col flex-1 min-h-0">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center mb-4">
           <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
             {t('glossary.back')}
           </button>
+          <span className="flex-1 text-center text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {project?.project_name}
+          </span>
           <div className="flex items-center gap-3">
             {unsaved && <span className="text-sm text-yellow-600 dark:text-yellow-400">{t('glossary.unsaved')}</span>}
             <button

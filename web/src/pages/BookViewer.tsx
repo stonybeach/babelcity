@@ -197,6 +197,10 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
         <button onClick={onBack} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
           {t('viewer.back')}
         </button>
+        <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          {project?.project_name}
+        </span>
+        <div />
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 mb-4 flex items-center gap-4">
