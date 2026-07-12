@@ -87,6 +87,8 @@ export const en = {
   'glossary.col.type': 'Type',
   'glossary.col.gender': 'Gender',
   'glossary.loading': 'Loading glossary...',
+  'glossary.copyToClipboard': 'Copy to Clipboard',
+  'glossary.copied': 'Copied!',
 
   // BookViewer
   'viewer.back': '← Back to Projects',

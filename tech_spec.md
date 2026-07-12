@@ -752,7 +752,13 @@ Routes job to correct executor based on `job.job_type`.
 | Function | Description |
 |----------|-------------|
 | `lifespan` | Async context manager: calls `init_db()` on startup |
-| `run` | Runs uvicorn on `127.0.0.1:8000` with reload |
+| `_mount_static(dist)` | Mounts `StaticFiles` at `/` if `dist` is a directory |
+| `cli` | Typer CLI with `--web-dist`, `--web-host`, `--web-port` options |
+
+**CLI options:**
+- `--web-dist PATH`: Override static files directory (default: `web/dist/`)
+- `--web-host HOST`: Override bind host (default: `127.0.0.1`)
+- `--web-port PORT`: Override bind port (default: `8000`)
 
 **App:** FastAPI with CORS middleware. Mounts static files from `web/dist/` if present. Routes: `/api/v1` (projects, tasks, jobs, glossary, resources, chapters), `/ws` (WebSocket).
 

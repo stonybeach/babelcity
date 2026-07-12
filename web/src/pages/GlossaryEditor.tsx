@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Save, X, Plus, Trash2 } from 'lucide-react'
+import { Save, X, Plus, Trash2, Copy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { glossary as glossaryApi } from '../services/api'
 import { AgGridReact } from 'ag-grid-react'
@@ -18,6 +18,7 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   const [gridApi, setGridApi] = useState<any>(null)
   const [rowData, setRowData] = useState<any[]>([])
   const [unsaved, setUnsaved] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const { data: glossaryData, isLoading } = useQuery({
     queryKey: ['glossary', projectId],
@@ -77,6 +78,21 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
     setUnsaved(true)
   }
 
+  const handleCopyToClipboard = () => {
+    const lines = rowData
+      .filter(row => row.term && row.translated_name)
+      .map(row => {
+        const gender = row.gender || ''
+        if (gender.startsWith('男') || gender.startsWith('女')) {
+          return `${row.term} => ${row.translated_name} # ${gender}`
+        }
+        return `${row.term} => ${row.translated_name}`
+      })
+    navigator.clipboard.writeText(lines.join('\n'))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   const columnDefs = [
     { field: 'term', headerName: t('glossary.col.term'), editable: true, minWidth: 150, checkboxSelection: true },
     { field: 'translated_name', headerName: t('glossary.col.translatedName'), editable: true, minWidth: 150 },
@@ -112,6 +128,12 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
             </button>
             <button onClick={deleteSelected} className="flex items-center gap-1 px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700">
               <Trash2 size={14} /> {t('glossary.deleteSelected')}
+            </button>
+            <button
+              onClick={handleCopyToClipboard}
+              className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+            >
+              <Copy size={14} /> {copied ? t('glossary.copied') : t('glossary.copyToClipboard')}
             </button>
           </div>
 

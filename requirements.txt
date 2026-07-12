@@ -8,3 +8,4 @@ opencc-python-reimplemented==0.1.7
 lxml==6.1.1
 beautifulsoup4==4.15.0
 openai==2.44.0
+typer==0.20.0

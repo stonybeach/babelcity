@@ -1,10 +1,10 @@
 """FastAPI application entry point for Babel City."""
 
 import asyncio
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import typer
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -48,14 +48,29 @@ app.include_router(resources.router, prefix="/api/v1", tags=["Resources"])
 app.include_router(chapters.router, prefix="/api/v1", tags=["Chapters"])
 app.include_router(ws_router, prefix="/ws", tags=["WebSocket"])
 
-if WEB_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="static")
+def _mount_static(dist: Path):
+    if dist.is_dir():
+        app.mount("/", StaticFiles(directory=str(dist), html=True), name="static")
 
 
-def run():
+_mount_static(WEB_DIST)
+
+
+cli = typer.Typer()
+
+
+@cli.command()
+def main(
+    web_dist: Path | None = typer.Option(None, "--web-dist", help="Static files directory"),
+    web_host: str = typer.Option("127.0.0.1", "--web-host", help="Bind host"),
+    web_port: int = typer.Option(8000, "--web-port", help="Bind port"),
+):
+    """Babel City — Web Novel & EPUB Translation Organizer."""
+    if web_dist is not None:
+        _mount_static(web_dist)
     import uvicorn
-    uvicorn.run("babelcity.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("babelcity.main:app", host=web_host, port=web_port, reload=True)
 
 
 if __name__ == "__main__":
-    run()
+    cli()

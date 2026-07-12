@@ -87,6 +87,8 @@ export const zh = {
   'glossary.col.type': '类型',
   'glossary.col.gender': '性别',
   'glossary.loading': '正在加载术语表...',
+  'glossary.copyToClipboard': '复制到剪贴板',
+  'glossary.copied': '已复制!',
 
   // BookViewer
   'viewer.back': '← 返回小说列表',
