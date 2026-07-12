@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, Tuple, List, Union
 from .database import get_session
 from .models import FileItem, ItemTranslation, Project, BookVolume, TaskDefinition
 from .glossary_processor import scan_for_entities, merge_glossary
-from .text_processor import chunk_paragraphs, extract_paragraphs, load_dictionary
+from .text_processor import chunk_paragraphs, extract_paragraphs, load_dictionary, has_japanese
 
 
 def _load_project_and_config(session, job) -> Tuple[Project, TaskDefinition]:
@@ -122,6 +122,90 @@ def save_or_update_translation(
     session.commit()
 
 
+def _build_heading_map_from_translations(
+    session,
+    volume_id: str,
+    model_type: str,
+    qa_round: int,
+) -> Dict[str, str]:
+    """Extract heading_map from already-translated chapter content.
+
+    Parses translated chapters to find paired headings:
+    <h1 style="opacity: 0.4">Original</h1> followed by <h1>Translated</h1>.
+    """
+    from lxml import etree
+
+    heading_map: Dict[str, str] = {}
+
+    # Get all translated chapter items for the given volume
+    translations = (
+        session.query(ItemTranslation)
+        .join(FileItem, FileItem.id == ItemTranslation.item_id)
+        .filter(
+            FileItem.volume_id == volume_id,
+            FileItem.item_type == "Chapter",
+            FileItem.obsolete == False,
+            ItemTranslation.model_type == model_type,
+            ItemTranslation.qa_round == qa_round,
+            ItemTranslation.status == True,
+        )
+        .all()
+    )
+
+    if not translations:
+        # Fallback: try qa_round=0
+        translations = (
+            session.query(ItemTranslation)
+            .join(FileItem, FileItem.id == ItemTranslation.item_id)
+            .filter(
+                FileItem.volume_id == volume_id,
+                FileItem.item_type == "Chapter",
+                FileItem.obsolete == False,
+                ItemTranslation.model_type == model_type,
+                ItemTranslation.qa_round == 0,
+                ItemTranslation.status == True,
+            )
+            .all()
+        )
+
+    for trans in translations:
+        try:
+            content_str = _decompress_content(trans.content)
+            parser = etree.XMLParser(recover=True, resolve_entities=False)
+            tree = etree.fromstring(content_str.encode("utf-8"), parser=parser)
+        except Exception:
+            continue
+
+        # Find all heading tags (h1-h6)
+        headings = tree.xpath(
+            '//*[local-name()="h1" or local-name()="h2" or local-name()="h3" '
+            'or local-name()="h4" or local-name()="h5" or local-name()="h6"]'
+        )
+
+        for i, tag in enumerate(headings):
+            style = tag.get("style", "")
+            if "opacity" not in style or "0.4" not in style:
+                continue
+
+            # This is a dimmed original heading; find the next sibling heading
+            original_text = "".join(tag.itertext()).strip()
+            if not original_text:
+                continue
+
+            # Look for the next sibling that is a heading (the translated one)
+            sibling = tag.getnext()
+            while sibling is not None:
+                tag_name = etree.QName(sibling.tag).localname if isinstance(sibling.tag, str) else None
+                if tag_name and tag_name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+                    translated_text = "".join(sibling.itertext()).strip()
+                    if translated_text and translated_text != original_text:
+                        heading_map[original_text] = translated_text
+                    break
+                sibling = sibling.getnext()
+
+    return heading_map
+
+
 def _translate_nav_items(
     session,
     volume_id: str,
@@ -130,6 +214,7 @@ def _translate_nav_items(
     model_type: str,
     qa_round: int,
     qa_model: Optional[str] = None,
+    heading_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """Translate all non-obsolete Nav items for a volume and save the translations.
 
@@ -141,6 +226,7 @@ def _translate_nav_items(
         model_type: The model type or configuration name identifier.
         qa_round: The current QA round index (0 for initial translation).
         qa_model: The QA model name if applicable.
+        heading_map: Optional mapping of original headings to translated headings.
     """
     from .translation_processor import process_toc
 
@@ -150,9 +236,16 @@ def _translate_nav_items(
         obsolete=False
     ).all()
 
+    # If no heading_map provided, build from already-translated chapters
+    effective_heading_map = heading_map if heading_map else {}
+    if not effective_heading_map:
+        effective_heading_map = _build_heading_map_from_translations(
+            session, volume_id, model_type, qa_round
+        )
+
     for nav in nav_items:
         text = _decompress_content(nav.content)
-        modified_nav = process_toc(text, config_dict.get("chunk_size", 12), {}, glossary, config_dict)
+        modified_nav = process_toc(text, config_dict.get("chunk_size", 12), effective_heading_map, glossary, config_dict)
 
         if modified_nav:
             compressed = _compress_content(modified_nav)
@@ -292,6 +385,7 @@ def execute_translation_job(job, progress_callback):
 
         total = len(chapters)
         completed = 0
+        aggregated_heading_map = {}
 
         progress_callback(0, total)
 
@@ -325,6 +419,9 @@ def execute_translation_job(job, progress_callback):
                                     content=compressed,
                                     qa_model=None,
                                 )
+                        if heading_map:
+                            with counter_lock:
+                                aggregated_heading_map.update(heading_map)
                     except Exception as e:
                         print(f"Error translating chapter {ch.full_path}: {e}")
 
@@ -345,6 +442,8 @@ def execute_translation_job(job, progress_callback):
                         content=compressed,
                         qa_model=None,
                     )
+                if heading_map:
+                    aggregated_heading_map.update(heading_map)
 
                 completed += 1
                 progress_callback(completed, total)
@@ -358,6 +457,7 @@ def execute_translation_job(job, progress_callback):
             model_type=model_type,
             qa_round=0,
             qa_model=None,
+            heading_map=aggregated_heading_map,
         )
 
 
@@ -463,8 +563,9 @@ def execute_qa_job(job, progress_callback):
                     processed += 1
                     progress_callback(pass_idx * total_chapters + processed, num_passes * total_chapters)
 
-            # Save QA results
+            # Save QA results & aggregate heading maps
             qa_model_name = config.model_type or config.config_name
+            aggregated_heading_map = {}
             for item_id, modified_xml, heading_map in results:
                 if modified_xml:
                     compressed = _compress_content(modified_xml)
@@ -476,6 +577,8 @@ def execute_qa_job(job, progress_callback):
                         content=compressed,
                         qa_model=qa_model_name,
                     )
+                if heading_map:
+                    aggregated_heading_map.update(heading_map)
 
             # Update Nav after each QA pass
             _translate_nav_items(
@@ -486,4 +589,5 @@ def execute_qa_job(job, progress_callback):
                 model_type=translation_model_type,
                 qa_round=qa_round,
                 qa_model=qa_model_name,
+                heading_map=aggregated_heading_map,
             )

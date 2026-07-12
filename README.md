@@ -2,6 +2,8 @@
 
 Local Web Novel & EPUB Translation Organizer. Provides a web UI for managing translation projects, configuring LLM tasks, and running background translation/QA jobs.
 
+**Notes: currently only Japanese -> Chinese is supported.**
+
 ## Tech Stack
 
 - **Backend**: Python 3.11+, FastAPI, SQLAlchemy, SQLite
@@ -75,3 +77,10 @@ python -m babelcity.main
 cd web
 npm run dev
 ```
+
+## Screenshots
+
+![Projects](/screenshots/projects.png)
+![Book Viewer](/screenshots/book_viewer.png)
+![Glossary Editor](/screenshots/glossary_editor.png)
+![Jobs Queue](/screenshots/jobs_queue.png)

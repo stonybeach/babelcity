@@ -267,7 +267,7 @@ def process_document(content, glossary, llm_config, resume=False):
 
 
 def translate_toc_content(content, chunk_size, heading_map, glossary, llm_config):
-    """Translate TOC, reusing pre-translated headers. Ported from _translate_toc_content."""
+    """Translate HTML5 Nav TOC, reusing pre-translated headers. Ported from _translate_toc_content."""
     try:
         tree = parse_xml(content)
     except Exception as e:
@@ -338,6 +338,79 @@ def translate_toc_content(content, chunk_size, heading_map, glossary, llm_config
     return serialize_xml(tree)
 
 
+def translate_ncx_content(content, chunk_size, heading_map, glossary, llm_config):
+    """Translate EPUB 2.0 NCX TOC. Text is replaced in-place in <text> elements."""
+    try:
+        tree = parse_xml(content)
+    except Exception as e:
+        print(f"      [!] Failed to parse NCX XML: {e}")
+        return content
+
+    text_elements = tree.xpath('//*[local-name()="navLabel"]/*[local-name()="text"]')
+    if not text_elements:
+        return content
+
+    valid_tags = [(tag, "".join(tag.itertext()).strip()) for tag in text_elements if "".join(tag.itertext()).strip()]
+
+    sorted_headings = sorted(
+        [(h, zh) for h, zh in heading_map.items() if len(h.strip()) > 0],
+        key=lambda x: len(x[0]),
+        reverse=True
+    )
+    
+    for i in range(0, len(valid_tags), chunk_size):
+        chunk = valid_tags[i:i+chunk_size]
+
+        texts_to_translate = []
+        pre_translated = {}
+
+        for idx, (tag, text) in enumerate(chunk):
+            zh_text = None
+            for jp_h, zh_h in sorted_headings:
+                if jp_h in text:
+                    replaced = text.replace(jp_h, zh_h)
+
+                    if not has_japanese(replaced):
+                        zh_text = replaced
+                        break
+
+            if zh_text is not None:
+                pre_translated[idx] = zh_text
+            elif not has_japanese(text):
+                pre_translated[idx] = text
+            else:
+                texts_to_translate.append((idx, text))
+
+        zh_batch = [None] * len(chunk)
+        for idx, zh_text in pre_translated.items():
+            zh_batch[idx] = zh_text
+
+        if texts_to_translate:
+            current_glossary = glossary
+            llm_texts = [t[1] for t in texts_to_translate]
+            llm_translated = translate_chunk(llm_texts, current_glossary, {}, llm_config)
+            for (idx, _), zh_text in zip(texts_to_translate, llm_translated):
+                zh_batch[idx] = zh_text
+
+        for (tag, _), zh in zip(chunk, zh_batch):
+            for child in list(tag):
+                tag.remove(child)
+            if zh:
+                finalized_zh = finalize_text(zh, _, llm_config.get("traditional_chinese", True))
+                tag.text = finalized_zh if finalized_zh else _
+            else:
+                tag.text = _
+
+    return serialize_xml(tree)
+
+
 def process_toc(content, chunk_size, heading_map, glossary, llm_config):
-    """Translate a Nav file. Ported from _process_toc."""
+    """Translate a Nav file (HTML5 Nav or EPUB 2.0 NCX). Auto-detects format."""
+    try:
+        tree = parse_xml(content)
+        root_name = etree.QName(tree.tag).localname if isinstance(tree.tag, str) else tree.tag
+        if root_name == "ncx":
+            return translate_ncx_content(content, chunk_size, heading_map, glossary, llm_config)
+    except Exception:
+        pass
     return translate_toc_content(content, chunk_size, heading_map, glossary, llm_config)

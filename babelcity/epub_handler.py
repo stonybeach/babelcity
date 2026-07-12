@@ -69,29 +69,37 @@ def get_epub_metadata(zip_file):
                 "properties": properties,
             }
 
-    # Extract spine
+    # Extract spine and toc ID (EPUB 2.0 NCX reference)
     spine = []
-    for itemref in opf_xml.xpath('//*[local-name()="spine"]/*[local-name()="itemref"]'):
-        idref = itemref.get("idref")
-        if idref and idref in manifest:
-            spine.append(manifest[idref]["href"])
+    toc_id = None
+    spine_elements = opf_xml.xpath('//*[local-name()="spine"]')
+    if spine_elements:
+        spine_el = spine_elements[0]
+        toc_id = spine_el.get("toc")
+        for itemref in spine_el.xpath('*[local-name()="itemref"]'):
+            idref = itemref.get("idref")
+            if idref and idref in manifest:
+                spine.append(manifest[idref]["href"])
 
-    return manifest, spine, opf_path
+    return manifest, spine, opf_path, toc_id
 
 
-def select_nav_file(manifest):
+def select_nav_file(manifest, toc_id=None):
     """Select single Nav file from manifest entries.
 
-    Priority: property='nav' > nav.xhtml > toc.xhtml.
+    Priority: property='nav' > nav.xhtml > toc.xhtml > toc.ncx (EPUB 2.0).
+    If an HTML5 Nav exists, toc.ncx is left as a Resource.
     Returns (nav_id, nav_href) or (None, None).
     """
     nav_candidates = []
     nav_xhtml = None
     toc_xhtml = None
+    ncx_candidate = None
 
     for item_id, info in manifest.items():
         href = info.get("href", "")
         props = info.get("properties", "")
+        media_type = info.get("media_type", "")
 
         # Check for nav property
         if "nav" in props.split():
@@ -104,13 +112,23 @@ def select_nav_file(manifest):
         elif basename == "toc.xhtml":
             toc_xhtml = (item_id, href)
 
-    # Priority selection: property='nav' > nav.xhtml > toc.xhtml
+        # Check for NCX (EPUB 2.0 TOC)
+        if basename == "toc.ncx" or media_type == "application/x-dtbncx+xml":
+            ncx_candidate = (item_id, href)
+
+    # Also check toc_id from spine element
+    if toc_id and toc_id in manifest and ncx_candidate is None:
+        ncx_candidate = (toc_id, manifest[toc_id]["href"])
+
+    # Priority selection: property='nav' > nav.xhtml > toc.xhtml > toc.ncx
     if nav_candidates:
         return nav_candidates[0]
     if nav_xhtml:
         return nav_xhtml
     if toc_xhtml:
         return toc_xhtml
+    if ncx_candidate:
+        return ncx_candidate
 
     return None, None
 
@@ -150,8 +168,8 @@ def import_epub(volume_id, file_bytes, session):
         item.obsolete = True
 
     with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as zfile:
-        manifest, spine, opf_path = get_epub_metadata(zfile)
-        nav_id, nav_href = select_nav_file(manifest)
+        manifest, spine, opf_path, toc_id = get_epub_metadata(zfile)
+        nav_id, nav_href = select_nav_file(manifest, toc_id)
 
         created_ids = []
         for item_id, info in manifest.items():
