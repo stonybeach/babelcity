@@ -44,7 +44,7 @@ def serialize_xml(tree):
     return etree.tostring(new_tree, encoding='utf-8', xml_declaration=True, method='xml')
 
 
-def load_dictionary(pre_translated_text):
+def load_dictionary(pre_translated_text=None):
     """Load pre-translated terms. Ported from _load_dictionary.
 
     Can load from file path or from text string.

@@ -3,12 +3,18 @@
 import json
 import zlib
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple, List, Union
+from typing import Optional, Dict, Any, Tuple, List, Union, Callable
 
 from .database import get_session
 from .models import FileItem, ItemTranslation, Project, BookVolume, TaskDefinition
 from .glossary_processor import scan_for_entities, merge_glossary
+from .llm_handler import normalize_llm_config
 from .text_processor import chunk_paragraphs, extract_paragraphs, load_dictionary, has_japanese
+
+
+class JobPausedException(Exception):
+    """Raised when a job is paused mid-execution to signal the worker loop."""
+    pass
 
 
 def _load_project_and_config(session, job) -> Tuple[Project, TaskDefinition]:
@@ -54,7 +60,7 @@ def _build_llm_config(config: TaskDefinition, full_params: bool = False) -> Dict
             "synchronize_quotes": config.synchronize_quotes,
             "threads": config.threads,
         })
-    return llm_config
+    return normalize_llm_config(llm_config)
 
 
 def _get_project_glossary(project: Project) -> Dict[str, Any]:
@@ -215,6 +221,7 @@ def _translate_nav_items(
     qa_round: int,
     qa_model: Optional[str] = None,
     heading_map: Optional[Dict[str, str]] = None,
+    should_stop_callback: Optional[Callable[[], bool]] = None,
 ) -> None:
     """Translate all non-obsolete Nav items for a volume and save the translations.
 
@@ -227,6 +234,8 @@ def _translate_nav_items(
         qa_round: The current QA round index (0 for initial translation).
         qa_model: The QA model name if applicable.
         heading_map: Optional mapping of original headings to translated headings.
+        should_stop_callback: Optional callback returning True if the job queue
+            has been paused; if so, raises JobPausedException.
     """
     from .translation_processor import process_toc
 
@@ -244,6 +253,8 @@ def _translate_nav_items(
         )
 
     for nav in nav_items:
+        if should_stop_callback and should_stop_callback():
+            raise JobPausedException("Job queue paused during Nav translation")
         text = _decompress_content(nav.content)
         modified_nav = process_toc(text, config_dict.get("chunk_size", 12), effective_heading_map, glossary, config_dict)
 
@@ -259,19 +270,26 @@ def _translate_nav_items(
             )
 
 
-def execute_job(job, progress_callback):
-    """Dispatch job to appropriate executor."""
+def execute_job(job, progress_callback, should_stop_callback: Optional[Callable[[], bool]] = None):
+    """Dispatch job to appropriate executor.
+
+    Args:
+        job: The Job object to execute.
+        progress_callback: Callback for progress updates (completed, total).
+        should_stop_callback: Optional callback returning True if the job queue
+            has been paused and the job should stop after the current chunk.
+    """
     if job.job_type == "Glossary":
-        execute_glossary_job(job, progress_callback)
+        execute_glossary_job(job, progress_callback, should_stop_callback)
     elif job.job_type == "Translation":
-        execute_translation_job(job, progress_callback)
+        execute_translation_job(job, progress_callback, should_stop_callback)
     elif job.job_type == "QA":
-        execute_qa_job(job, progress_callback)
+        execute_qa_job(job, progress_callback, should_stop_callback)
     else:
         raise ValueError(f"Unknown job type: {job.job_type}")
 
 
-def execute_glossary_job(job, progress_callback):
+def execute_glossary_job(job, progress_callback, should_stop_callback=None):
     """Execute glossary scanning job."""
     with get_session() as session:
         # Load project and config
@@ -316,6 +334,9 @@ def execute_glossary_job(job, progress_callback):
         progress_callback(0, total)
 
         for ch in chapters:
+            if should_stop_callback and should_stop_callback():
+                raise JobPausedException("Job queue paused during glossary scanning")
+
             # Decompress content
             text = _decompress_content(ch.content)
 
@@ -323,6 +344,8 @@ def execute_glossary_job(job, progress_callback):
             paragraphs = extract_paragraphs(text)
             chunks = chunk_paragraphs(paragraphs, config.chunk_size)
             for chunk in chunks:
+                if should_stop_callback and should_stop_callback():
+                    raise JobPausedException("Job queue paused during glossary scanning")
                 chunk_text = "\n".join(chunk)
                 terms = scan_for_entities(chunk_text, llm_config, existing_glossary=merged, pre_translated=pre_translated)
                 merged = merge_glossary(merged, terms)
@@ -347,7 +370,7 @@ def execute_glossary_job(job, progress_callback):
         session.commit()
 
 
-def execute_translation_job(job, progress_callback):
+def execute_translation_job(job, progress_callback, should_stop_callback=None):
     """Execute translation job with full LLM processing and multi-threading."""
     from .translation_processor import process_document
 
@@ -391,7 +414,9 @@ def execute_translation_job(job, progress_callback):
 
         def process_chapter(ch):
             text = _decompress_content(ch.content)
-            modified_xml, heading_map = process_document(text, glossary, llm_config)
+            modified_xml, heading_map = process_document(
+                text, glossary, llm_config, should_stop=should_stop_callback
+            )
             return ch, modified_xml, heading_map
 
         if threads > 1:
@@ -405,6 +430,8 @@ def execute_translation_job(job, progress_callback):
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = {executor.submit(process_chapter, ch): ch for ch in chapters}
                 for future in as_completed(futures):
+                    if should_stop_callback and should_stop_callback():
+                        raise JobPausedException("Job queue paused during translation")
                     ch = futures[future]
                     try:
                         _, modified_xml, heading_map = future.result()
@@ -422,6 +449,8 @@ def execute_translation_job(job, progress_callback):
                         if heading_map:
                             with counter_lock:
                                 aggregated_heading_map.update(heading_map)
+                    except JobPausedException:
+                        raise
                     except Exception as e:
                         print(f"Error translating chapter {ch.full_path}: {e}")
 
@@ -431,6 +460,8 @@ def execute_translation_job(job, progress_callback):
                     progress_callback(completed, total)
         else:
             for ch in chapters:
+                if should_stop_callback and should_stop_callback():
+                    raise JobPausedException("Job queue paused during translation")
                 _, modified_xml, heading_map = process_chapter(ch)
                 if modified_xml:
                     compressed = _compress_content(modified_xml)
@@ -458,10 +489,11 @@ def execute_translation_job(job, progress_callback):
             qa_round=0,
             qa_model=None,
             heading_map=aggregated_heading_map,
+            should_stop_callback=should_stop_callback,
         )
 
 
-def execute_qa_job(job, progress_callback):
+def execute_qa_job(job, progress_callback, should_stop_callback=None):
     """Execute QA job with multi-pass correction and multi-threading support."""
     from .qa_processor import process_qa_document, run_qa_on_chapters
 
@@ -498,7 +530,9 @@ def execute_qa_job(job, progress_callback):
 
         def process_single(args):
             item_id, content = args
-            modified, heading_map = process_qa_document(content, glossary, qa_config)
+            modified, heading_map = process_qa_document(
+                content, glossary, qa_config, should_stop=should_stop_callback
+            )
             return (item_id, modified, heading_map)
 
         for pass_idx in range(num_passes):
@@ -546,11 +580,15 @@ def execute_qa_job(job, progress_callback):
                         for item in chapter_items
                     }
                     for future in as_completed(futures):
+                        if should_stop_callback and should_stop_callback():
+                            raise JobPausedException("Job queue paused during QA")
                         try:
                             result = future.result()
                             results.append(result)
+                        except JobPausedException:
+                            raise
                         except Exception as e:
-                            item_id, content = futures[future]
+                            item_id, _ = futures[future]
                             print(f"Error processing item {item_id}: {e}")
                             results.append((item_id, content, {}))
 
@@ -560,8 +598,12 @@ def execute_qa_job(job, progress_callback):
             else:
                 # Single-threaded QA
                 for item in chapter_items:
+                    if should_stop_callback and should_stop_callback():
+                        raise JobPausedException("Job queue paused during QA")
                     try:
                         results.append(process_single(item))
+                    except JobPausedException:
+                        raise
                     except Exception as e:
                         item_id, content = item
                         print(f"Error processing item {item_id}: {e}")
@@ -596,4 +638,5 @@ def execute_qa_job(job, progress_callback):
                 qa_round=qa_round,
                 qa_model=qa_model_name,
                 heading_map=aggregated_heading_map,
+                should_stop_callback=should_stop_callback,
             )

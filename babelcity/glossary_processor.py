@@ -2,7 +2,7 @@
 
 import json
 
-from .llm_handler import ask_llm_json
+from .llm_handler import ask_llm_json, normalize_llm_config
 from .text_processor import has_japanese
 
 
@@ -47,21 +47,22 @@ def scan_for_entities(text_chunk, llm_config, existing_glossary=None, pre_transl
     system_prompt = build_system_prompt(existing_glossary or {}, pre_translated or {})
     user_prompt = build_user_prompt(text_chunk)
 
+    cfg = normalize_llm_config(llm_config)
     terms = ask_llm_json(
-        base_url=llm_config.get("base_url", "http://localhost:8080/v1"),
-        api_key=llm_config.get("api_key", "not-needed"),
-        model=llm_config.get("model", "default"),
+        base_url=cfg.get("base_url", "http://localhost:8080/v1"),
+        api_key=cfg.get("api_key", "not-needed"),
+        model=cfg.get("model", "default"),
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        max_tokens=llm_config.get("max_tokens", 8192),
-        temperature=llm_config.get("temperature", 1.0),
-        top_p=llm_config.get("top_p", 0.92),
-        min_p=llm_config.get("min_p", 0.05),
-        repetition_penalty=llm_config.get("repetition_penalty", 1.04),
-        frequency_penalty=llm_config.get("frequency_penalty", 0.05),
-        presence_penalty=0.0,
-        top_k=llm_config.get("top_k"),
-        max_retries=llm_config.get("retry_attempts", 3),
+        max_tokens=cfg["max_tokens"],
+        temperature=cfg["temperature"],
+        top_p=cfg["top_p"],
+        min_p=cfg["min_p"],
+        repetition_penalty=cfg["repetition_penalty"],
+        frequency_penalty=cfg["frequency_penalty"],
+        presence_penalty=cfg["presence_penalty"],
+        top_k=cfg["top_k"],
+        max_retries=cfg.get("retry_attempts", 3),
     )
 
     # Inline filtering matching PoC scan_for_entities (lines 468-482)

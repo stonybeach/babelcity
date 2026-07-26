@@ -3,8 +3,24 @@
 import json
 import re
 import time
+from typing import Any, Dict, Optional
 
 from openai import OpenAI
+
+
+DEFAULT_LLM_PARAMS: Dict[str, Any] = {
+    "max_tokens": 8192,
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "min_p": 0,
+    "top_k": None,
+    "repetition_penalty": 1,
+    "frequency_penalty": 0.05,
+    "presence_penalty": 0.0,
+}
+
+# Parameters that are passed via the OpenAI `extra_body` extension.
+_EXTRA_BODY_PARAMS = ("min_p", "repetition_penalty", "top_k")
 
 
 def _create_client(base_url, api_key):
@@ -14,6 +30,45 @@ def _create_client(base_url, api_key):
 def _p(val, default):
     """Get value or default if None."""
     return val if val is not None else default
+
+
+def normalize_llm_config(llm_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Fill in missing or None LLM parameters with DEFAULT_LLM_PARAMS.
+
+    Returns a new dict where every key from DEFAULT_LLM_PARAMS is present.
+    Keys not in DEFAULT_LLM_PARAMS (e.g. base_url, api_key, model) are
+    passed through unchanged.
+    """
+    if llm_config is None:
+        llm_config = {}
+    normalized = dict(llm_config)
+    for key, default_val in DEFAULT_LLM_PARAMS.items():
+        if normalized.get(key) is None:
+            normalized[key] = default_val
+    return normalized
+
+
+def _get_llm_kwargs(llm_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Extract LLM call keyword arguments from a config dict, applying defaults.
+
+    Returns a dict suitable for passing as **kwargs to ask_llm / ask_llm_json,
+    including connection params (base_url, api_key, model) and all generation
+    parameters with defaults filled in for any missing or None values.
+    """
+    cfg = normalize_llm_config(llm_config)
+    return {
+        "base_url": cfg.get("base_url", "http://localhost:8080/v1"),
+        "api_key": cfg.get("api_key", "not-needed"),
+        "model": cfg.get("model", "default"),
+        "max_tokens": cfg["max_tokens"],
+        "temperature": cfg["temperature"],
+        "top_p": cfg["top_p"],
+        "min_p": cfg["min_p"],
+        "repetition_penalty": cfg["repetition_penalty"],
+        "frequency_penalty": cfg["frequency_penalty"],
+        "presence_penalty": cfg["presence_penalty"],
+        "top_k": cfg["top_k"],
+    }
 
 
 def remove_think_tags(text):
@@ -62,9 +117,14 @@ def extract_json(text):
 
 
 def ask_llm(base_url, api_key, model, system_prompt, user_prompt,
-            max_tokens=8192, temperature=1.0, top_p=0.92,
-            min_p=0.05, repetition_penalty=1.04, frequency_penalty=0.05,
-            presence_penalty=0.0, top_k=None, is_json=False, verbose=False):
+            max_tokens=DEFAULT_LLM_PARAMS["max_tokens"],
+            temperature=DEFAULT_LLM_PARAMS["temperature"],
+            top_p=DEFAULT_LLM_PARAMS["top_p"],
+            min_p=DEFAULT_LLM_PARAMS["min_p"],
+            repetition_penalty=DEFAULT_LLM_PARAMS["repetition_penalty"],
+            frequency_penalty=DEFAULT_LLM_PARAMS["frequency_penalty"],
+            presence_penalty=DEFAULT_LLM_PARAMS["presence_penalty"],
+            top_k=DEFAULT_LLM_PARAMS["top_k"], is_json=False, verbose=False):
     """Call LLM API with streaming. Ported from _ask_llm in translate_epubs_new.py."""
     client = _create_client(base_url, api_key)
     messages = [
@@ -160,9 +220,13 @@ def ask_llm(base_url, api_key, model, system_prompt, user_prompt,
 
 
 def ask_llm_json(base_url, api_key, model, system_prompt, user_prompt,
-                  max_retries=3, max_tokens=8192, temperature=1.0,
-                  top_p=0.92, min_p=0.05, repetition_penalty=1.04,
-                  frequency_penalty=0.05, presence_penalty=0.0, top_k=None):
+                  max_retries=3, max_tokens=DEFAULT_LLM_PARAMS["max_tokens"],
+                  temperature=DEFAULT_LLM_PARAMS["temperature"],
+                  top_p=DEFAULT_LLM_PARAMS["top_p"], min_p=DEFAULT_LLM_PARAMS["min_p"],
+                  repetition_penalty=DEFAULT_LLM_PARAMS["repetition_penalty"],
+                  frequency_penalty=DEFAULT_LLM_PARAMS["frequency_penalty"],
+                  presence_penalty=DEFAULT_LLM_PARAMS["presence_penalty"],
+                  top_k=DEFAULT_LLM_PARAMS["top_k"]):
     """Call LLM and extract JSON. Ported from _ask_llm_json."""
     for attempt in range(max_retries):
         response = ask_llm(

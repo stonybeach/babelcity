@@ -4,15 +4,24 @@ import json
 
 from lxml import etree
 
-from .llm_handler import ask_llm_json
+from .llm_handler import ask_llm_json, normalize_llm_config
 from .text_processor import (
     parse_xml, serialize_xml, build_mini_glossary,
     finalize_text, extract_text_with_ruby, has_japanese
 )
+from .job_executors import JobPausedException
 
 
-def process_qa_document(content, glossary, llm_config):
-    """QA a chapter. Ported from _process_qa_document."""
+def process_qa_document(content, glossary, llm_config, should_stop=None):
+    """QA a chapter. Ported from _process_qa_document.
+
+    Args:
+        content: XHTML content string.
+        glossary: Project glossary dictionary.
+        llm_config: LLM configuration dictionary.
+        should_stop: Optional callable returning True if the job queue is paused.
+            If so, raises JobPausedException after the current chunk.
+    """
     try:
         tree = parse_xml(content)
     except Exception as e:
@@ -46,6 +55,8 @@ def process_qa_document(content, glossary, llm_config):
     trad_chinese = llm_config.get("traditional_chinese", True)
 
     for i in range(0, len(pairs), chunk_size):
+        if should_stop and should_stop():
+            raise JobPausedException("Job queue paused during QA")
         chunk = pairs[i:i+chunk_size]
 
         jp_texts = [p['jp'] for p in chunk]
@@ -85,21 +96,22 @@ def process_qa_document(content, glossary, llm_config):
             "JSON 输出:"
         )
 
+        cfg = normalize_llm_config(llm_config)
         qa_result = ask_llm_json(
-            base_url=llm_config.get("base_url", "http://localhost:8080/v1"),
-            api_key=llm_config.get("api_key", "not-needed"),
-            model=llm_config.get("model", "default"),
+            base_url=cfg.get("base_url", "http://localhost:8080/v1"),
+            api_key=cfg.get("api_key", "not-needed"),
+            model=cfg.get("model", "default"),
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            max_retries=llm_config.get("retry_attempts", 2),
-            max_tokens=llm_config.get("max_tokens", 8192),
-            temperature=llm_config.get("temperature", 1.0),
-            top_p=llm_config.get("top_p", 0.92),
-            min_p=llm_config.get("min_p", 0.05),
-            repetition_penalty=llm_config.get("repetition_penalty", 1.04),
-            frequency_penalty=llm_config.get("frequency_penalty", 0.05),
-            presence_penalty=llm_config.get("presence_penalty", 0.0),
-            top_k=llm_config.get("top_k"),
+            max_retries=cfg.get("retry_attempts", 2),
+            max_tokens=cfg["max_tokens"],
+            temperature=cfg["temperature"],
+            top_p=cfg["top_p"],
+            min_p=cfg["min_p"],
+            repetition_penalty=cfg["repetition_penalty"],
+            frequency_penalty=cfg["frequency_penalty"],
+            presence_penalty=cfg["presence_penalty"],
+            top_k=cfg["top_k"],
         )
 
         # Apply corrections

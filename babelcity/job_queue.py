@@ -50,6 +50,10 @@ class JobQueue:
     def is_running(self):
         return self._worker_thread is not None and self._worker_thread.is_alive()
 
+    def is_paused(self):
+        """Return True if the job queue is currently paused."""
+        return self._stop_event.is_set()
+
     def add_job(self, job: Job):
         with self._lock:
             self._pending.append(job)
@@ -171,7 +175,7 @@ class JobQueue:
 
     def worker_loop(self):
         """Background worker loop."""
-        from .job_executors import execute_job
+        from .job_executors import execute_job, JobPausedException
 
         while not self._stop_event.is_set():
             # Pick next pending job
@@ -189,11 +193,24 @@ class JobQueue:
 
             # Execute
             try:
-                execute_job(job, lambda c, t: self.update_progress(job.id, c, t))
+                execute_job(
+                    job,
+                    lambda c, t: self.update_progress(job.id, c, t),
+                    should_stop_callback=lambda: self._stop_event.is_set(),
+                )
                 job.status = JobStatus.COMPLETED
                 logger.info(f"Worker loop: job {job.id} completed successfully.")
+            except JobPausedException:
+                logger.info(f"Worker loop: job {job.id} was paused, re-queuing.")
+                with self._lock:
+                    job.status = JobStatus.PENDING
+                    if not any(j.id == job.id for j in self._pending):
+                        self._pending.insert(0, job)
+                    self._running = None
+                self._broadcast_status(job.id, job.status.value)
+                return
             except Exception as e:
-                # Check if paused
+                # Check if paused (legacy path: pause() may have already set status)
                 with self._lock:
                     if job.status == JobStatus.PENDING:
                         logger.info(f"Worker loop: job {job.id} was paused, re-queuing.")

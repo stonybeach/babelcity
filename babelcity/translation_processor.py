@@ -4,28 +4,12 @@ import json
 import re
 from lxml import etree
 
-from .llm_handler import ask_llm
+from .llm_handler import ask_llm, _get_llm_kwargs
 from .text_processor import (
     parse_xml, serialize_xml, build_mini_glossary,
     finalize_text, extract_text_with_ruby, has_japanese
 )
-
-
-def _get_llm_kwargs(llm_config):
-    """Extract common LLM parameters from config dict."""
-    return {
-        "base_url": llm_config.get("base_url", "http://localhost:8080/v1"),
-        "api_key": llm_config.get("api_key", "not-needed"),
-        "model": llm_config.get("model", "default"),
-        "max_tokens": llm_config.get("max_tokens", 8192),
-        "temperature": llm_config.get("temperature", 1.0),
-        "top_p": llm_config.get("top_p", 0.92),
-        "min_p": llm_config.get("min_p", 0.05),
-        "repetition_penalty": llm_config.get("repetition_penalty", 1.04),
-        "frequency_penalty": llm_config.get("frequency_penalty", 0.05),
-        "presence_penalty": llm_config.get("presence_penalty", 0.0),
-        "top_k": llm_config.get("top_k"),
-    }
+from .job_executors import JobPausedException
 
 
 def system_prompt_header(is_single):
@@ -152,8 +136,17 @@ def translate_chunk(jp_texts, current_glossary, chapter_abbrevs, llm_config, his
     return fallback_translations
 
 
-def process_document(content, glossary, llm_config, resume=False):
-    """Translate a chapter. Ported from _process_document."""
+def process_document(content, glossary, llm_config, resume=False, should_stop=None):
+    """Translate a chapter. Ported from _process_document.
+
+    Args:
+        content: XHTML content string.
+        glossary: Project glossary dictionary.
+        llm_config: LLM configuration dictionary.
+        resume: Unused (kept for signature compatibility).
+        should_stop: Optional callable returning True if the job queue is paused.
+            If so, raises JobPausedException after the current chunk.
+    """
     try:
         tree = parse_xml(content)
     except Exception as e:
@@ -205,6 +198,8 @@ def process_document(content, glossary, llm_config, resume=False):
     chunks = [valid_tags[i:i+chunk_size] for i in range(0, len(valid_tags), chunk_size)]
 
     for chunk in chunks:
+        if should_stop and should_stop():
+            raise JobPausedException("Job queue paused during translation")
         jp_texts = [t[1] for t in chunk]
 
         current_glossary = build_mini_glossary(jp_texts, glossary, chapter_abbrevs) if use_mini_glossary else glossary
