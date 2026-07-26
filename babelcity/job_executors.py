@@ -550,8 +550,9 @@ def execute_qa_job(job, progress_callback):
                             result = future.result()
                             results.append(result)
                         except Exception as e:
-                            item_id, _ = futures[future]
+                            item_id, content = futures[future]
                             print(f"Error processing item {item_id}: {e}")
+                            results.append((item_id, content, {}))
 
                         with counter_lock:
                             processed += 1
@@ -559,7 +560,12 @@ def execute_qa_job(job, progress_callback):
             else:
                 # Single-threaded QA
                 for item in chapter_items:
-                    results.append(process_single(item))
+                    try:
+                        results.append(process_single(item))
+                    except Exception as e:
+                        item_id, content = item
+                        print(f"Error processing item {item_id}: {e}")
+                        results.append((item_id, content, {}))
                     processed += 1
                     progress_callback(pass_idx * total_chapters + processed, num_passes * total_chapters)
 

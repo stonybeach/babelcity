@@ -115,6 +115,8 @@ npx tsc --noEmit                # type check
 8. **Sorted dropdowns and tables** — all `<select>` elements and table rows must be sorted
 9. **Obsolete items excluded** — glossary scanning, translation, and QA jobs must skip `FileItem.obsolete=True`
 10. **Export fallback order** — exact `(model_type, qa_round)` match → `(model_type, qa_round=0)` → original `FileItem` content
+11. **This project uses AG Grid v32.2+ JS Theming API (theme={themeObject}). Do NOT use or suggest legacy ag-grid/styles/*.css imports or ag-theme-* wrapper classes.**
+12. **If you have run python -m babelcity.main to start the server for testing, please stop it after testing.**
 
 ## API Quick Reference
 

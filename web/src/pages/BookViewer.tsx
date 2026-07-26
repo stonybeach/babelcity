@@ -155,9 +155,10 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
       const url = URL.createObjectURL(response.data)
       const a = document.createElement('a')
       a.href = url
-      const baseName = volume?.target_volume_title || project?.project_name || 'chapter'
-      let safeName = baseName.replace(/[\\*?"<>|]/g, '_').replace(/^_+/, '')
-      if (!safeName) safeName = 'chapter'
+      const baseName = volume?.target_volume_title
+        ? volume.target_volume_title
+        : `${project?.project_name || 'chapter'}_${volume?.volume_number || '1'}`
+      const safeName = baseName.replace(/[\\*?"<>|]/g, '_').replace(/^_+/, '') || 'chapter'
       a.download = `${safeName}_${modelType}_${qaRound}.epub`
       a.click()
       URL.revokeObjectURL(url)

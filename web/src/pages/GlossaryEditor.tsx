@@ -3,8 +3,8 @@ import { Save, X, Plus, Trash2, Copy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { glossary as glossaryApi, projects as projectsApi } from '../services/api'
 import { AgGridReact } from 'ag-grid-react'
-import 'ag-grid-community/styles/ag-grid.css'
-import 'ag-grid-community/styles/ag-theme-alpine.css'
+import { themeAlpine, colorSchemeDarkBlue, colorSchemeLightCold } from 'ag-grid-community'
+import { useTheme } from '../components/ThemeProvider'
 import { useI18n } from '../i18n'
 
 interface GlossaryEditorProps {
@@ -14,6 +14,9 @@ interface GlossaryEditorProps {
 
 export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBack }) => {
   const { t } = useI18n()
+  const { dark } = useTheme()
+  const lightTheme = React.useMemo(() => themeAlpine.withPart(colorSchemeLightCold), [])
+  const darkTheme = React.useMemo(() => themeAlpine.withPart(colorSchemeDarkBlue), [])
   const queryClient = useQueryClient()
   const [gridApi, setGridApi] = useState<any>(null)
   const [rowData, setRowData] = useState<any[]>([])
@@ -145,7 +148,7 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
             </button>
           </div>
 
-          <div className="ag-theme-alpine dark:bg-gray-700 flex-1 min-h-0">
+          <div className="flex-1 min-h-0">
             <AgGridReact
               rowData={rowData}
               columnDefs={columnDefs}
@@ -153,6 +156,7 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
               onCellEditingStopped={onCellChanged}
               defaultColDef={{ resizable: true, sortable: true, filter: true }}
               rowSelection={{ mode: 'multiRow' }}
+              theme={dark ? darkTheme : lightTheme}
             />
           </div>
         </div>

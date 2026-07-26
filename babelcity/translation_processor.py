@@ -4,11 +4,28 @@ import json
 import re
 from lxml import etree
 
-from .llm_handler import ask_llm, ask_llm_json, remove_think_tags
+from .llm_handler import ask_llm
 from .text_processor import (
     parse_xml, serialize_xml, build_mini_glossary,
     finalize_text, extract_text_with_ruby, has_japanese
 )
+
+
+def _get_llm_kwargs(llm_config):
+    """Extract common LLM parameters from config dict."""
+    return {
+        "base_url": llm_config.get("base_url", "http://localhost:8080/v1"),
+        "api_key": llm_config.get("api_key", "not-needed"),
+        "model": llm_config.get("model", "default"),
+        "max_tokens": llm_config.get("max_tokens", 8192),
+        "temperature": llm_config.get("temperature", 1.0),
+        "top_p": llm_config.get("top_p", 0.92),
+        "min_p": llm_config.get("min_p", 0.05),
+        "repetition_penalty": llm_config.get("repetition_penalty", 1.04),
+        "frequency_penalty": llm_config.get("frequency_penalty", 0.05),
+        "presence_penalty": llm_config.get("presence_penalty", 0.0),
+        "top_k": llm_config.get("top_k"),
+    }
 
 
 def system_prompt_header(is_single):
@@ -46,21 +63,7 @@ def translate_single_line(jp_text, current_glossary, chapter_abbrevs, llm_config
         f"待翻译日文原文: {jp_text}\n\n"
         "翻译结果:"
     )
-    res = ask_llm(
-        base_url=llm_config.get("base_url", "http://localhost:8080/v1"),
-        api_key=llm_config.get("api_key", "not-needed"),
-        model=llm_config.get("model", "default"),
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        max_tokens=llm_config.get("max_tokens", 8192),
-        temperature=llm_config.get("temperature", 1.0),
-        top_p=llm_config.get("top_p", 0.92),
-        min_p=llm_config.get("min_p", 0.05),
-        repetition_penalty=llm_config.get("repetition_penalty", 1.04),
-        frequency_penalty=llm_config.get("frequency_penalty", 0.05),
-        presence_penalty=llm_config.get("presence_penalty", 0.0),
-        top_k=llm_config.get("top_k"),
-    )
+    res = ask_llm(system_prompt=system_prompt, user_prompt=user_prompt, **_get_llm_kwargs(llm_config))
     return res.strip()
 
 
@@ -99,21 +102,7 @@ def translate_chunk(jp_texts, current_glossary, chapter_abbrevs, llm_config, his
             f"中文翻译结果 (使用 {delimiter} 分隔):"
         )
 
-        res = ask_llm(
-            base_url=llm_config.get("base_url", "http://localhost:8080/v1"),
-            api_key=llm_config.get("api_key", "not-needed"),
-            model=llm_config.get("model", "default"),
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=llm_config.get("max_tokens", 8192),
-            temperature=llm_config.get("temperature", 1.0),
-            top_p=llm_config.get("top_p", 0.92),
-            min_p=llm_config.get("min_p", 0.05),
-            repetition_penalty=llm_config.get("repetition_penalty", 1.04),
-            frequency_penalty=llm_config.get("frequency_penalty", 0.05),
-            presence_penalty=llm_config.get("presence_penalty", 0.0),
-            top_k=llm_config.get("top_k"),
-        )
+        res = ask_llm(system_prompt=system_prompt, user_prompt=user_prompt, **_get_llm_kwargs(llm_config))
 
         res_clean = re.sub(r'^```.*?\n|```$', '', res.strip(), flags=re.MULTILINE).strip()
 
@@ -163,32 +152,6 @@ def translate_chunk(jp_texts, current_glossary, chapter_abbrevs, llm_config, his
     return fallback_translations
 
 
-def apply_translations_to_chunk(chunk, zh_batch, local_heading_map=None):
-    """Inject translated text below original; dim original. Ported from _apply_translations_to_chunk."""
-    for (tag, original_txt), zh in zip(chunk, zh_batch):
-        current_style = tag.get('style', '')
-        tag.set('style', f"{current_style}; opacity: 0.4;".strip('; '))
-
-        new_tag = etree.Element(tag.tag)
-
-        finalized_zh = None
-        if zh:
-            finalized_zh = finalize_text(zh, original_txt, trad_chinese)
-            new_tag.text = finalized_zh if finalized_zh else original_txt
-        else:
-            new_tag.text = original_txt
-
-        if local_heading_map is not None:
-            tag_name = tag.tag.split('}')[-1].lower()
-            if tag_name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                clean_orig = original_txt.strip()
-                if clean_orig and has_japanese(clean_orig):
-                    local_heading_map[clean_orig] = new_tag.text.strip()
-
-        parent = tag.getparent()
-        parent.insert(parent.index(tag) + 1, new_tag)
-
-
 def process_document(content, glossary, llm_config, resume=False):
     """Translate a chapter. Ported from _process_document."""
     try:
@@ -212,11 +175,8 @@ def process_document(content, glossary, llm_config, resume=False):
     local_heading_map = {}
     chunk_size = llm_config.get("chunk_size", 12)
     use_mini_glossary = llm_config.get("use_mini_glossary", True)
-    sync_quotes_enabled = llm_config.get("synchronize_quotes", True)
     trad_chinese = llm_config.get("traditional_chinese", True)
 
-    # Pass trad_chinese to apply_translations_to_chunk via closure
-    original_apply = apply_translations_to_chunk
     def apply_with_config(chunk, zh_batch, heading_map):
         for (tag, original_txt), zh in zip(chunk, zh_batch):
             current_style = tag.get('style', '')
@@ -241,7 +201,6 @@ def process_document(content, glossary, llm_config, resume=False):
             parent = tag.getparent()
             parent.insert(parent.index(tag) + 1, new_tag)
 
-    # Override finalize_text behavior via config
     previous_translations = []
     chunks = [valid_tags[i:i+chunk_size] for i in range(0, len(valid_tags), chunk_size)]
 
@@ -266,26 +225,25 @@ def process_document(content, glossary, llm_config, resume=False):
     return modified_xml, local_heading_map
 
 
-def translate_toc_content(content, chunk_size, heading_map, glossary, llm_config):
-    """Translate HTML5 Nav TOC, reusing pre-translated headers. Ported from _translate_toc_content."""
-    try:
-        tree = parse_xml(content)
-    except Exception as e:
-        print(f"      [!] Failed to parse TOC XML: {e}")
-        return content
+_TOC_XPATH = '//*[local-name()="a" or local-name()="span" or local-name()="h1" or local-name()="h2" or local-name()="h3" or local-name()="text"]'
+_NCX_XPATH = '//*[local-name()="navLabel"]/*[local-name()="text"]'
 
-    tags = tree.xpath('//*[local-name()="a" or local-name()="span" or local-name()="h1" or local-name()="h2" or local-name()="h3" or local-name()="text"]')
+
+def _translate_nav_tags(tree, xpath, chunk_size, heading_map, glossary, llm_config):
+    """Common TOC/NCX translation logic. Text is replaced in-place."""
+    tags = tree.xpath(xpath)
     if not tags:
-        return content
+        return serialize_xml(tree)
 
     valid_tags = [(tag, "".join(tag.itertext()).strip()) for tag in tags if "".join(tag.itertext()).strip()]
 
-    # Sort headings by length descending for longest-match-first
     sorted_headings = sorted(
         [(h, zh) for h, zh in heading_map.items() if len(h.strip()) > 0],
         key=lambda x: len(x[0]),
         reverse=True
     )
+
+    use_mini_glossary = llm_config.get("use_mini_glossary", True)
 
     for i in range(0, len(valid_tags), chunk_size):
         chunk = valid_tags[i:i+chunk_size]
@@ -295,8 +253,6 @@ def translate_toc_content(content, chunk_size, heading_map, glossary, llm_config
 
         for idx, (tag, text) in enumerate(chunk):
             zh_text = None
-
-            # Check against cached headings
             for jp_h, zh_h in sorted_headings:
                 if jp_h in text:
                     replaced = text.replace(jp_h, zh_h)
@@ -319,23 +275,33 @@ def translate_toc_content(content, chunk_size, heading_map, glossary, llm_config
             zh_batch[idx] = zh_text
 
         if texts_to_translate:
-            use_mini = llm_config.get("use_mini_glossary", True)
-            current_glossary = glossary if not use_mini else glossary
             llm_texts = [t[1] for t in texts_to_translate]
+            current_glossary = build_mini_glossary(llm_texts, glossary, {}) if use_mini_glossary else glossary
             llm_translated = translate_chunk(llm_texts, current_glossary, {}, llm_config)
-            for (idx, _), zh_text in zip(texts_to_translate, llm_translated):
+            for (idx, orig_text), zh_text in zip(texts_to_translate, llm_translated):
+                if zh_text:
+                    zh_text = finalize_text(zh_text, orig_text, llm_config.get("traditional_chinese", True))
                 zh_batch[idx] = zh_text
 
         for (tag, _), zh in zip(chunk, zh_batch):
             for child in list(tag):
                 tag.remove(child)
             if zh:
-                finalized_zh = finalize_text(zh, _, llm_config.get("traditional_chinese", True))
-                tag.text = finalized_zh if finalized_zh else _
+                tag.text = zh if zh else _
             else:
                 tag.text = _
 
     return serialize_xml(tree)
+
+
+def translate_toc_content(content, chunk_size, heading_map, glossary, llm_config):
+    """Translate HTML5 Nav TOC, reusing pre-translated headers."""
+    try:
+        tree = parse_xml(content)
+    except Exception as e:
+        print(f"      [!] Failed to parse TOC XML: {e}")
+        return content
+    return _translate_nav_tags(tree, _TOC_XPATH, chunk_size, heading_map, glossary, llm_config)
 
 
 def translate_ncx_content(content, chunk_size, heading_map, glossary, llm_config):
@@ -345,63 +311,7 @@ def translate_ncx_content(content, chunk_size, heading_map, glossary, llm_config
     except Exception as e:
         print(f"      [!] Failed to parse NCX XML: {e}")
         return content
-
-    text_elements = tree.xpath('//*[local-name()="navLabel"]/*[local-name()="text"]')
-    if not text_elements:
-        return content
-
-    valid_tags = [(tag, "".join(tag.itertext()).strip()) for tag in text_elements if "".join(tag.itertext()).strip()]
-
-    sorted_headings = sorted(
-        [(h, zh) for h, zh in heading_map.items() if len(h.strip()) > 0],
-        key=lambda x: len(x[0]),
-        reverse=True
-    )
-    
-    for i in range(0, len(valid_tags), chunk_size):
-        chunk = valid_tags[i:i+chunk_size]
-
-        texts_to_translate = []
-        pre_translated = {}
-
-        for idx, (tag, text) in enumerate(chunk):
-            zh_text = None
-            for jp_h, zh_h in sorted_headings:
-                if jp_h in text:
-                    replaced = text.replace(jp_h, zh_h)
-
-                    if not has_japanese(replaced):
-                        zh_text = replaced
-                        break
-
-            if zh_text is not None:
-                pre_translated[idx] = zh_text
-            elif not has_japanese(text):
-                pre_translated[idx] = text
-            else:
-                texts_to_translate.append((idx, text))
-
-        zh_batch = [None] * len(chunk)
-        for idx, zh_text in pre_translated.items():
-            zh_batch[idx] = zh_text
-
-        if texts_to_translate:
-            current_glossary = glossary
-            llm_texts = [t[1] for t in texts_to_translate]
-            llm_translated = translate_chunk(llm_texts, current_glossary, {}, llm_config)
-            for (idx, _), zh_text in zip(texts_to_translate, llm_translated):
-                zh_batch[idx] = zh_text
-
-        for (tag, _), zh in zip(chunk, zh_batch):
-            for child in list(tag):
-                tag.remove(child)
-            if zh:
-                finalized_zh = finalize_text(zh, _, llm_config.get("traditional_chinese", True))
-                tag.text = finalized_zh if finalized_zh else _
-            else:
-                tag.text = _
-
-    return serialize_xml(tree)
+    return _translate_nav_tags(tree, _NCX_XPATH, chunk_size, heading_map, glossary, llm_config)
 
 
 def process_toc(content, chunk_size, heading_map, glossary, llm_config):

@@ -13,6 +13,7 @@ from ..database import get_session
 from ..models import Project, BookVolume, FileItem, ItemTranslation
 from .. import epub_handler
 from pydantic import BaseModel
+from urllib.parse import quote as url_quote
 from typing import Any
 
 router = APIRouter(prefix="/projects")
@@ -297,13 +298,14 @@ def export_epub(
         raise HTTPException(404, "Volume not found")
 
     filename_base = volume.target_volume_title or f"{project.project_name}_{volume.volume_number}"
-    safe_filename = "".join(c for c in filename_base if c.isascii() and c.isalnum() or c in " _-").replace(" ", "_")
-    filename = f"{safe_filename}_{model_type}_{qa_round}.epub"
+    ascii_filename = "".join(c for c in filename_base if c.isascii() and c.isalnum() or c in " _-").replace(" ", "_")
+    filename = f"{ascii_filename}_{model_type}_{qa_round}.epub"
+    utf8_filename = f"{filename_base}_{model_type}_{qa_round}.epub"
 
     epub_bytes = epub_handler.export_epub(volume.id, model_type, qa_round, db)
 
     return Response(
         content=epub_bytes,
         media_type="application/epub+zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{url_quote(utf8_filename)}"},
     )
