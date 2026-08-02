@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Save, X, Plus, Trash2, Copy } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { glossary as glossaryApi, projects as projectsApi } from '../services/api'
@@ -19,6 +19,7 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   const darkTheme = React.useMemo(() => themeAlpine.withPart(colorSchemeDarkBlue), [])
   const queryClient = useQueryClient()
   const [gridApi, setGridApi] = useState<any>(null)
+  const scrollTargetRef = useRef<number | null>(null)
   const [rowData, setRowData] = useState<any[]>([])
   const [unsaved, setUnsaved] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -53,6 +54,17 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
     }
   }, [glossaryData])
 
+  React.useEffect(() => {
+    const idx = scrollTargetRef.current
+    if (idx != null) {
+      gridApi?.ensureNodeVisible((node: any) => node.rowIndex === idx)
+      setTimeout(() => {
+        gridApi?.startEditingCell({ rowIndex: idx, colKey: 'term' })
+        scrollTargetRef.current = null
+      }, 0)
+    }
+  }, [rowData])
+
   const handleSave = () => {
     const glossary: Record<string, any> = {}
     rowData.forEach(row => {
@@ -69,7 +81,10 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
 
   const addRow = () => {
     const newRow = { term: '', translated_name: '', type: '', gender: '' }
-    setRowData(prev => [...prev, newRow])
+    setRowData(prev => {
+      scrollTargetRef.current = prev.length
+      return [...prev, newRow]
+    })
     setUnsaved(true)
   }
 
@@ -102,7 +117,7 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   }
 
   const columnDefs = [
-    { field: 'term', headerName: t('glossary.col.term'), editable: true, minWidth: 150, checkboxSelection: true },
+    { field: 'term', headerName: t('glossary.col.term'), editable: true, minWidth: 150 },
     { field: 'translated_name', headerName: t('glossary.col.translatedName'), editable: true, minWidth: 150 },
     { field: 'type', headerName: t('glossary.col.type'), editable: true, minWidth: 100 },
     { field: 'gender', headerName: t('glossary.col.gender'), editable: true, minWidth: 100 },

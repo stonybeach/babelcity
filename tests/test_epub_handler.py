@@ -9,6 +9,8 @@ import zipfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+os.environ.setdefault("BABELCITY_DB", os.path.join(os.path.dirname(os.path.dirname(__file__)), "babelcity_test.db"))
+
 from babelcity.epub_handler import (
     get_epub_metadata,
     select_nav_file,
@@ -67,22 +69,22 @@ class TestSelectNavFile(unittest.TestCase):
 class TestClassifyItem(unittest.TestCase):
     def test_chapter(self):
         info = {"href": "Text/episode1.xhtml", "media_type": "application/xhtml+xml", "properties": ""}
-        self.assertEqual(classify_item("ep1", info, ["Text/episode1.xhtml"], None), "Chapter")
+        self.assertEqual(classify_item("ep1", info, ["Text/episode1.xhtml"], None), ("Chapter", 0))
 
     def test_nav(self):
         info = {"href": "Text/nav.xhtml", "media_type": "application/xhtml+xml", "properties": "nav"}
-        self.assertEqual(classify_item("nav", info, [], "nav"), "Nav")
+        self.assertEqual(classify_item("nav", info, [], "nav"), ("Nav", None))
 
     def test_resource(self):
         info = {"href": "styles/main.css", "media_type": "text/css", "properties": ""}
-        self.assertEqual(classify_item("css", info, [], None), "Resource")
+        self.assertEqual(classify_item("css", info, [], None), ("Resource", None))
 
 
 class TestGetEpubMetadata(unittest.TestCase):
     def test_book_epub(self):
         epub_path = os.path.join(os.path.dirname(__file__), '..', 'book.epub')
         with zipfile.ZipFile(epub_path, 'r') as zfile:
-            manifest, spine, opf_path = get_epub_metadata(zfile)
+            manifest, spine, opf_path, toc_id = get_epub_metadata(zfile)
 
         self.assertIn("nav.xhtml", manifest)
         self.assertIn("episode1.xhtml", manifest)

@@ -4,9 +4,9 @@ assets/external/
 __pycache__/
 *.db
 .states
-babelcity.db
-babelcity.db-shm
-babelcity.db-wal
+babelcity*.db
+babelcity*.db-shm
+babelcity*.db-wal
 node_modules/
 dist/
 .DS_Store
