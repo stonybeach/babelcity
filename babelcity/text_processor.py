@@ -12,6 +12,14 @@ def has_japanese(text):
     return bool(re.search(r'[\u3040-\u309F\u30A0-\u30FF]', text))
 
 
+def has_literal_text(text):
+    """Check for literal text: hiragana, katakana, kanji/Chinese, or latin characters.
+    Returns False if text contains only symbols or emojis."""
+    return bool(re.search(
+        r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u0041-\u007A\u00C0-\u024F]', text
+    ))
+
+
 def extract_text_with_ruby(tag):
     """Convert ruby tags to (ruby) format. Ported from _extract_text_with_ruby."""
     tag_html = etree.tostring(tag, encoding='unicode', method='html')

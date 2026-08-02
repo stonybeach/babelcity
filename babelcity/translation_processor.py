@@ -7,7 +7,7 @@ from lxml import etree
 from .llm_handler import ask_llm, _get_llm_kwargs
 from .text_processor import (
     parse_xml, serialize_xml, build_mini_glossary,
-    finalize_text, extract_text_with_ruby, has_japanese
+    finalize_text, extract_text_with_ruby, has_japanese, has_literal_text
 )
 from .job_executors import JobPausedException
 
@@ -162,7 +162,7 @@ def process_document(content, glossary, llm_config, resume=False, should_stop=No
     valid_tags = []
     for tag in tags:
         txt = extract_text_with_ruby(tag)
-        if txt:
+        if txt and has_literal_text(txt):
             valid_tags.append((tag, txt))
 
     local_heading_map = {}

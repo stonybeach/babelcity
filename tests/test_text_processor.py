@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from babelcity.text_processor import (
     has_japanese,
+    has_literal_text,
     extract_text_with_ruby,
     parse_xml,
     serialize_xml,
@@ -38,6 +39,50 @@ class TestHasJapanese(unittest.TestCase):
 
     def test_empty(self):
         self.assertFalse(has_japanese(""))
+
+
+class TestHasLiteralText(unittest.TestCase):
+    def test_symbols_only(self):
+        self.assertFalse(has_literal_text("◆◇◆"))
+
+    def test_hiragana(self):
+        self.assertTrue(has_literal_text("こんにちは"))
+
+    def test_katakana(self):
+        self.assertTrue(has_literal_text("カタカナ"))
+
+    def test_kanji(self):
+        self.assertTrue(has_literal_text("漢字"))
+
+    def test_chinese(self):
+        self.assertTrue(has_literal_text("中文"))
+
+    def test_latin(self):
+        self.assertTrue(has_literal_text("Hello world"))
+
+    def test_emojis_only(self):
+        self.assertFalse(has_literal_text("😀🎉"))
+
+    def test_empty(self):
+        self.assertFalse(has_literal_text(""))
+
+    def test_mixed_hiragana_kanji_symbols(self):
+        self.assertTrue(has_literal_text("──はい、完成！"))
+
+    def test_mixed_hiragana_latin(self):
+        self.assertTrue(has_literal_text("にほんごEnglish"))
+
+    def test_mixed_symbols_and_latin(self):
+        self.assertTrue(has_literal_text("◆◇◆Hello"))
+
+    def test_mixed_symbols_and_kanji(self):
+        self.assertTrue(has_literal_text("〜〜日本語"))
+
+    def test_mixed_symbols_emojis_and_chinese(self):
+        self.assertTrue(has_literal_text("😀🎉中文"))
+
+    def test_mixed_symbols_and_emojis_only(self):
+        self.assertFalse(has_literal_text("◆◇◆😀🎉"))
 
 
 class TestExtractTextWithRuby(unittest.TestCase):
