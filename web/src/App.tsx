@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './components/ThemeProvider'
 import { I18nProvider } from './i18n'
@@ -23,11 +23,44 @@ const queryClient = new QueryClient({
   },
 })
 
+const UI_STATE_KEY = 'babelcity-ui'
+
+function loadUiState(): Partial<{ activeTab: Tab; view: View; projectId: string | null; volumeId: string | null }> {
+  try {
+    const raw = localStorage.getItem(UI_STATE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return {
+      activeTab: parsed.activeTab,
+      view: parsed.view,
+      projectId: parsed.projectId ?? null,
+      volumeId: parsed.volumeId ?? null,
+    }
+  } catch {
+    return {}
+  }
+}
+
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('projects')
-  const [view, setView] = useState<View>('list')
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(null)
+  const persisted = loadUiState()
+  const [activeTab, setActiveTab] = useState<Tab>(persisted.activeTab ?? 'projects')
+  const [view, setView] = useState<View>(persisted.view ?? 'list')
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(persisted.projectId ?? null)
+  const [selectedVolumeId, setSelectedVolumeId] = useState<string | null>(persisted.volumeId ?? null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        UI_STATE_KEY,
+        JSON.stringify({
+          activeTab,
+          view,
+          projectId: selectedProjectId,
+          volumeId: selectedVolumeId,
+        }),
+      )
+    } catch {}
+  }, [activeTab, view, selectedProjectId, selectedVolumeId])
 
   const navigateToViewer = (projectId: string, volumeId: string) => {
     setSelectedProjectId(projectId)
