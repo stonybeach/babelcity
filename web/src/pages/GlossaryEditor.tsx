@@ -19,7 +19,7 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   const darkTheme = React.useMemo(() => themeAlpine.withPart(colorSchemeDarkBlue), [])
   const queryClient = useQueryClient()
   const [gridApi, setGridApi] = useState<any>(null)
-  const scrollTargetRef = useRef<number | null>(null)
+  const newRowRef = useRef<any | null>(null)
   const [rowData, setRowData] = useState<any[]>([])
   const [unsaved, setUnsaved] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -55,13 +55,17 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
   }, [glossaryData])
 
   React.useEffect(() => {
-    const idx = scrollTargetRef.current
-    if (idx != null) {
-      gridApi?.ensureNodeVisible((node: any) => node.rowIndex === idx)
-      setTimeout(() => {
-        gridApi?.startEditingCell({ rowIndex: idx, colKey: 'term' })
-        scrollTargetRef.current = null
-      }, 0)
+    const target = newRowRef.current
+    if (target) {
+      let node: any = null
+      gridApi?.forEachNode((n: any) => { if (n.data === target) node = n })
+      if (node) {
+        gridApi?.ensureNodeVisible(node)
+        setTimeout(() => {
+          gridApi?.startEditingCell({ rowIndex: node.rowIndex, colKey: 'term' })
+          newRowRef.current = null
+        }, 0)
+      }
     }
   }, [rowData])
 
@@ -81,10 +85,8 @@ export const GlossaryEditor: React.FC<GlossaryEditorProps> = ({ projectId, onBac
 
   const addRow = () => {
     const newRow = { term: '', translated_name: '', type: '', gender: '' }
-    setRowData(prev => {
-      scrollTargetRef.current = prev.length
-      return [...prev, newRow]
-    })
+    newRowRef.current = newRow
+    setRowData(prev => [...prev, newRow])
     setUnsaved(true)
   }
 

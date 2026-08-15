@@ -17,6 +17,7 @@ from babelcity.text_processor import (
     sync_quotes,
     finalize_text,
     chunk_paragraphs,
+    failed_translation,
 )
 from lxml import etree
 
@@ -39,6 +40,18 @@ class TestHasJapanese(unittest.TestCase):
 
     def test_empty(self):
         self.assertFalse(has_japanese(""))
+
+    def test_middle_dot_only(self):
+        self.assertFalse(has_japanese("・"))
+
+    def test_latin_with_middle_dot(self):
+        self.assertFalse(has_japanese("A・B"))
+
+    def test_long_vowel_mark(self):
+        self.assertTrue(has_japanese("コーヒー"))
+
+    def test_kana_with_middle_dot(self):
+        self.assertTrue(has_japanese("ア・ア"))
 
 
 class TestHasLiteralText(unittest.TestCase):
@@ -228,6 +241,37 @@ class TestFinalizeText(unittest.TestCase):
     def test_empty(self):
         result = finalize_text("", to_traditional=False)
         self.assertEqual(result, "")
+
+    def test_fallback_curly_quotes(self):
+        result = finalize_text("“hello”", to_traditional=False)
+        self.assertEqual(result, "「hello」")
+
+    def test_fallback_straight_quotes(self):
+        result = finalize_text('"hello"', to_traditional=False)
+        self.assertEqual(result, "「hello」")
+
+
+class TestFailedTranslation(unittest.TestCase):
+    def test_empty_line(self):
+        self.assertTrue(failed_translation(["こんにちは"], [""]))
+
+    def test_unchanged_japanese(self):
+        self.assertTrue(failed_translation(["こんにちは"], ["こんにちは"]))
+
+    def test_too_long(self):
+        orig = "こ" * 12
+        trans = "あ" * 37
+        self.assertTrue(failed_translation([orig], [trans]))
+
+    def test_too_short(self):
+        orig = "こ" * 21
+        self.assertTrue(failed_translation([orig], ["短"]))
+
+    def test_valid_translation(self):
+        self.assertFalse(failed_translation(["こんにちは"], ["你好"]))
+
+    def test_empty_inputs(self):
+        self.assertFalse(failed_translation([], []))
 
 
 class TestChunkParagraphs(unittest.TestCase):
