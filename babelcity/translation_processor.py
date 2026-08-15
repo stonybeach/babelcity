@@ -6,7 +6,7 @@ from lxml import etree
 
 from .llm_handler import ask_llm, _get_llm_kwargs
 from .text_processor import (
-    parse_xml, serialize_xml, build_mini_glossary,
+    parse_xml, serialize_xml, build_mini_glossary, failed_translation,
     finalize_text, extract_text_with_ruby, has_japanese, has_literal_text
 )
 from .job_executors import JobPausedException
@@ -47,8 +47,20 @@ def translate_single_line(jp_text, current_glossary, chapter_abbrevs, llm_config
         f"待翻译日文原文: {jp_text}\n\n"
         "翻译结果:"
     )
-    res = ask_llm(system_prompt=system_prompt, user_prompt=user_prompt, **_get_llm_kwargs(llm_config))
-    return res.strip()
+
+    attempts = llm_config.get("retry_attempts", 2)
+
+    for attempt in range(attempts, 0, -1):
+        res_strip = ask_llm(system_prompt=system_prompt, user_prompt=user_prompt, **_get_llm_kwargs(llm_config))
+        if not failed_translation([jp_text], [res_strip]):
+            return res_strip
+        elif attempt > 1:
+            print(f"      [!] Line translation failed. Received '{res_strip}'. Retrying...")
+        else:
+            print(f"      [!] Line translation still failed. Received '{res_strip}'. Giving up.")
+            return res_strip
+
+    return jp_text
 
 
 def translate_chunk(jp_texts, current_glossary, chapter_abbrevs, llm_config, history_context=""):
@@ -88,7 +100,7 @@ def translate_chunk(jp_texts, current_glossary, chapter_abbrevs, llm_config, his
 
         res = ask_llm(system_prompt=system_prompt, user_prompt=user_prompt, **_get_llm_kwargs(llm_config))
 
-        res_clean = re.sub(r'^```.*?\n|```$', '', res.strip(), flags=re.MULTILINE).strip()
+        res_clean = re.sub(r'^```.*?\n|```$', '', res, flags=re.MULTILINE).strip()
 
         escaped_delimiter = re.escape(delimiter)
         out = [t.strip() for t in re.split(rf'\n*\s*{escaped_delimiter}\s*\n*', res_clean)]
@@ -104,14 +116,8 @@ def translate_chunk(jp_texts, current_glossary, chapter_abbrevs, llm_config, his
 
         if len(out) == len(jp_texts):
             # Check for failed translation (identical unchanged lines)
-            failed_translation = False
-            for orig_line, trans_line in zip(jp_texts, out):
-                if orig_line.strip() in trans_line.strip() and has_japanese(trans_line):
-                    failed_translation = True
-                    break
-
-            if failed_translation:
-                print(f"      [!] Chunk translation failed: Detected identical unchanged line. Retrying...")
+            if failed_translation(jp_texts, out):
+                print(f"      [!] Chunk translation failed. Retrying...")
                 continue
 
             return out

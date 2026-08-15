@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 def has_japanese(text):
     """Check for Japanese hiragana/katakana characters."""
-    return bool(re.search(r'[\u3040-\u309F\u30A0-\u30FF]', text))
+    return bool(re.search(r'[\u3040-\u309F\u30A0-\u30FA\u30FC-\u30FF]', text))
 
 
 def has_literal_text(text):
@@ -167,7 +167,7 @@ def finalize_text(text, source_text=None, to_traditional=True):
 
     if not is_synced:
         # Fallback for mismatched/absent quotes
-        text = text.replace('"', '「').replace('"', '」')
+        text = text.replace('“', '「').replace('”', '」')
         parts = text.split('"')
         if len(parts) > 1:
             new_text = parts[0]
@@ -217,3 +217,22 @@ def extract_paragraphs(text):
 def chunk_paragraphs(paragraphs, chunk_size):
     """Group paragraphs into chunks of given size."""
     return [paragraphs[i:i+chunk_size] for i in range(0, len(paragraphs), chunk_size)]
+
+
+def failed_translation(jp_texts, out):
+    for orig_line, trans_line in zip(jp_texts, out):
+        orig_line_strip = orig_line.strip()
+        trans_line_strip = trans_line.strip()
+        if len(trans_line_strip) == 0:
+            print(f"      [!] Received empty line for '{orig_line_strip}'. ")
+            return True
+        if orig_line_strip in trans_line_strip and has_japanese(trans_line):
+            print(f"      [!] Line not changed. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
+            return True
+        if len(orig_line_strip) > 10 and len(trans_line_strip) > len(orig_line_strip) * 3:
+            print(f"      [!] Translation too long. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
+            return True
+        if len(orig_line_strip) > 20 and len(trans_line_strip) * 3 < len(orig_line_strip):
+            print(f"      [!] Translation too short. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
+            return True
+    return False

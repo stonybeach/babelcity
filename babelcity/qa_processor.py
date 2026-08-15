@@ -6,7 +6,7 @@ from lxml import etree
 
 from .llm_handler import ask_llm_json, normalize_llm_config
 from .text_processor import (
-    parse_xml, serialize_xml, build_mini_glossary,
+    parse_xml, serialize_xml, build_mini_glossary, failed_translation,
     finalize_text, extract_text_with_ruby, has_japanese
 )
 from .job_executors import JobPausedException
@@ -119,8 +119,10 @@ def process_qa_document(content, glossary, llm_config, should_stop=None):
             idx_str = str(p['index'])
             if idx_str in qa_result:
                 corrected = qa_result[idx_str]
-                finalized = finalize_text(corrected, p['jp'], trad_chinese)
-                p['tag_zh'].text = finalized
+                jp_text = p['jp']
+                if not failed_translation([jp_text], [corrected]):
+                    finalized = finalize_text(corrected, p['jp'], trad_chinese)
+                    p['tag_zh'].text = finalized
 
     modified_xml = serialize_xml(tree)
     return modified_xml, {}
