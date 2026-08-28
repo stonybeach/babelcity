@@ -84,6 +84,47 @@ def init_db():
                 conn.rollback()
                 pass
 
+        # Migration: allow 'Generic' project_type and widen language columns.
+        # SQLite cannot ALTER CHECK constraints or column types, so rebuild.
+        if "projects" in inspector.get_table_names():
+            ddl = conn.execute(
+                sqlalchemy.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='projects'")
+            ).scalar() or ""
+            if "'Generic'" not in ddl:
+                try:
+                    old_cols = [col["name"] for col in inspector.get_columns("projects")]
+                    canonical_cols = [
+                        "id", "project_type", "project_name", "source_title",
+                        "source_language", "target_language", "glossary",
+                        "created_at", "updated_at",
+                    ]
+                    cols = [c for c in canonical_cols if c in old_cols]
+                    col_list = ", ".join(cols)
+                    conn.execute(sqlalchemy.text("""
+                        CREATE TABLE projects_new (
+                            id VARCHAR(36) NOT NULL,
+                            project_type VARCHAR(20) NOT NULL,
+                            project_name VARCHAR(255) NOT NULL,
+                            source_title VARCHAR(255) NOT NULL,
+                            source_language VARCHAR(40) NOT NULL,
+                            target_language VARCHAR(40) NOT NULL,
+                            glossary JSON NOT NULL,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL,
+                            PRIMARY KEY (id),
+                            CONSTRAINT ck_project_type CHECK (project_type IN ('Light Novel', 'Web Novel', 'Generic'))
+                        )
+                    """))
+                    conn.execute(sqlalchemy.text(
+                        f"INSERT INTO projects_new ({col_list}) SELECT {col_list} FROM projects"
+                    ))
+                    conn.execute(sqlalchemy.text("DROP TABLE projects"))
+                    conn.execute(sqlalchemy.text("ALTER TABLE projects_new RENAME TO projects"))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+
 
 def close_db():
     """Dispose engine connections."""

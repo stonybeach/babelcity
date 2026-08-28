@@ -20,6 +20,12 @@ def has_literal_text(text):
     ))
 
 
+def has_literal_text_generic(text):
+    """Generic language-pair check: True if text contains any Unicode letter.
+    Returns False for symbol-only or digit-only lines like '***', '---', '123'."""
+    return bool(re.search(r'[^\W\d_]', text, re.UNICODE))
+
+
 def extract_text_with_ruby(tag):
     """Convert ruby tags to (ruby) format. Ported from _extract_text_with_ruby."""
     tag_html = etree.tostring(tag, encoding='unicode', method='html')
@@ -233,6 +239,27 @@ def failed_translation(jp_texts, out):
             print(f"      [!] Translation too long. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
             return True
         if len(orig_line_strip) > 20 and len(trans_line_strip) * 3 < len(orig_line_strip):
+            print(f"      [!] Translation too short. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
+            return True
+    return False
+
+
+def failed_translation_generic(jp_texts, out):
+    """Language-pair-agnostic failure check: empty or unchanged output,
+    with symmetric x5 length thresholds."""
+    for orig_line, trans_line in zip(jp_texts, out):
+        orig_line_strip = orig_line.strip()
+        trans_line_strip = trans_line.strip()
+        if len(trans_line_strip) == 0:
+            print(f"      [!] Received empty line for '{orig_line_strip}'. ")
+            return True
+        if orig_line_strip == trans_line_strip:
+            print(f"      [!] Line not changed. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
+            return True
+        if len(orig_line_strip) > 10 and len(trans_line_strip) > len(orig_line_strip) * 5:
+            print(f"      [!] Translation too long. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
+            return True
+        if len(orig_line_strip) > 20 and len(trans_line_strip) * 5 < len(orig_line_strip):
             print(f"      [!] Translation too short. Received '{trans_line_strip}' for '{orig_line_strip}'. ")
             return True
     return False

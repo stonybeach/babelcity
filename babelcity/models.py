@@ -13,15 +13,15 @@ from .database import Base
 class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (
-        CheckConstraint("project_type IN ('Light Novel', 'Web Novel')", name="ck_project_type"),
+        CheckConstraint("project_type IN ('Light Novel', 'Web Novel', 'Generic')", name="ck_project_type"),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_type = Column(String(20), nullable=False)
     project_name = Column(String(255), nullable=False)
     source_title = Column(String(255), nullable=False)
-    source_language = Column(String(10), nullable=False, default="ja")
-    target_language = Column(String(10), nullable=False, default="zh")
+    source_language = Column(String(40), nullable=False, default="ja")
+    target_language = Column(String(40), nullable=False, default="zh")
     glossary = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

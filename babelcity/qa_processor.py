@@ -7,8 +7,9 @@ from lxml import etree
 from .llm_handler import ask_llm_json, normalize_llm_config
 from .text_processor import (
     parse_xml, serialize_xml, build_mini_glossary, failed_translation,
-    finalize_text, extract_text_with_ruby, has_japanese
+    finalize_text, extract_text_with_ruby, has_japanese, failed_translation_generic
 )
+from .prompts import get_system_prompt, get_user_prompt, get_language_kwargs, PAYLOAD_KEYS
 from .job_executors import JobPausedException
 
 
@@ -34,6 +35,9 @@ def process_qa_document(content, glossary, llm_config, should_stop=None):
 
     chapter_abbrevs = {}
 
+    generic = bool(llm_config.get("generic", False))
+    src_key, tgt_key = PAYLOAD_KEYS["generic" if generic else "ja_to_zh"]
+
     # Build pairs of (original, translated) tags
     pairs = []
     for i in range(len(tags) - 1):
@@ -41,8 +45,8 @@ def process_qa_document(content, glossary, llm_config, should_stop=None):
         if 'opacity: 0.4' in style or 'opacity:0.4' in style:
             pairs.append({
                 'index': i + 1,
-                'jp': "".join(tags[i].itertext()).strip(),
-                'zh': "".join(tags[i+1].itertext()).strip(),
+                src_key: "".join(tags[i].itertext()).strip(),
+                tgt_key: "".join(tags[i+1].itertext()).strip(),
                 'tag_orig': tags[i],
                 'tag_zh': tags[i+1],
             })
@@ -59,42 +63,33 @@ def process_qa_document(content, glossary, llm_config, should_stop=None):
             raise JobPausedException("Job queue paused during QA")
         chunk = pairs[i:i+chunk_size]
 
-        jp_texts = [p['jp'] for p in chunk]
-        current_glossary = build_mini_glossary(jp_texts, glossary, chapter_abbrevs) if use_mini_glossary else glossary
+        src_texts = [p[src_key] for p in chunk]
+        current_glossary = build_mini_glossary(src_texts, glossary, chapter_abbrevs) if use_mini_glossary else glossary
 
-        system_prompt = (
-            "你是一位极度严格的轻小说校对编辑。\n"
-            "任务：检查日文原文与中文翻译的一致性。\n"
-            "请阅读待校对段落的中文部分（zh），比较日语原文(jp），根据以下规则进行编辑。\n"
-            "【规则】：\n"
-            "1. 严格检查【术语表】。如果译文没有使用术语表中的规定译名，必须修改。\n"
-            "2. 修正明显的主语推断错误、代词错置或性别错误。\n"
-            "3. 【重要】如果原文是使用方引号（「」）的话，而译文改为西式引号，必须改回方引号，和原文一样。\n"
-            "4. 如果段落 jp 和 zh 没有分别，或者 zh 有很多日文文字，请重新翻译。\n"
-            "5. 如果翻译结果中有英语，除了原文里面的英语专有名称以外，请重新翻译，例如把「such」改为「这种」。\n"
-            "6. 如果译文文法不对或语句不通顺，请修改成为通顺的语句。\n"
-            "7. 如果译文已经通顺且没有违反上述各点，保留原译文风格，【绝对不要】进行修辞性或风格性的过度润色或重写！\n"
-            "输出要求：若有错，请严格使用 payload 中的 id 数字作为 key，回传 JSON，例如 {\"1\": \"修正后的中文1\", \"3\": \"修正后的中文3\"}。若完全没错，【必须】回传空对象 {}。\n\n"
-            f"【术语表】: {json.dumps(current_glossary, ensure_ascii=False)}\n"
-        )
+        kwargs = {"glossary": json.dumps(current_glossary, ensure_ascii=False)}
+        kwargs.update(get_language_kwargs(llm_config))
+        system_prompt = get_system_prompt(llm_config, "qa_system", kwargs)
 
-        try:
-            import opencc
-            cc_back = opencc.OpenCC('t2s')
+        if generic:
             eval_payload = [
-                {"id": str(p['index']), "jp": p['jp'], "zh": cc_back.convert(p['zh'])}
+                {"id": str(p['index']), src_key: p[src_key], tgt_key: p[tgt_key]}
                 for p in chunk
             ]
-        except Exception:
-            eval_payload = [
-                {"id": str(p['index']), "jp": p['jp'], "zh": p['zh']}
-                for p in chunk
-            ]
+        else:
+            try:
+                import opencc
+                cc_back = opencc.OpenCC('t2s')
+                eval_payload = [
+                    {"id": str(p['index']), src_key: p[src_key], tgt_key: cc_back.convert(p[tgt_key])}
+                    for p in chunk
+                ]
+            except Exception:
+                eval_payload = [
+                    {"id": str(p['index']), src_key: p[src_key], tgt_key: p[tgt_key]}
+                    for p in chunk
+                ]
 
-        user_prompt = (
-            f"payload: {json.dumps(eval_payload, ensure_ascii=False)}\n\n"
-            "JSON 输出:"
-        )
+        user_prompt = get_user_prompt(llm_config, "qa_user", {"payload": json.dumps(eval_payload, ensure_ascii=False)})
 
         cfg = normalize_llm_config(llm_config)
         qa_result = ask_llm_json(
@@ -115,13 +110,14 @@ def process_qa_document(content, glossary, llm_config, should_stop=None):
         )
 
         # Apply corrections
+        check = failed_translation_generic if generic else failed_translation
         for p in chunk:
             idx_str = str(p['index'])
             if idx_str in qa_result:
                 corrected = qa_result[idx_str]
-                jp_text = p['jp']
-                if not failed_translation([jp_text], [corrected]):
-                    finalized = finalize_text(corrected, p['jp'], trad_chinese)
+                src_text = p[src_key]
+                if not check([src_text], [corrected]):
+                    finalized = corrected if generic else finalize_text(corrected, src_text, trad_chinese)
                     p['tag_zh'].text = finalized
 
     modified_xml = serialize_xml(tree)
