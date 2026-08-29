@@ -2,6 +2,7 @@
 
 import re
 import json
+import unicodedata
 
 from lxml import etree
 from bs4 import BeautifulSoup
@@ -21,9 +22,10 @@ def has_literal_text(text):
 
 
 def has_literal_text_generic(text):
-    """Generic language-pair check: True if text contains any Unicode letter.
-    Returns False for symbol-only or digit-only lines like '***', '---', '123'."""
-    return bool(re.search(r'[^\W\d_]', text, re.UNICODE))
+    """Generic language-pair check: True if text contains any translatable Unicode letter.
+    Returns False for symbol-only, digit-only, or modifier-letter-only lines like
+    '***', '---', '123', or 'ーーーーーー'."""
+    return any(c.isalpha() and unicodedata.category(c) != 'Lm' for c in text)
 
 
 def extract_text_with_ruby(tag):

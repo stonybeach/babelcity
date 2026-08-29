@@ -3,8 +3,10 @@ import { Plus, Pencil, Trash2, Table2, Eye, Upload, BookOpen, Save, X } from 'lu
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projects as projectsApi, glossary as glossaryApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { ErrorToast } from '../components/ErrorToast'
 import { type Project } from '../types'
 import { useI18n } from '../i18n'
+import { getApiErrorMessage } from '../utils/errors'
 
 interface ProjectsPageProps {
   onNavigateToViewer: (projectId: string, volumeId: string) => void
@@ -19,6 +21,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [errorToast, setErrorToast] = useState<string | null>(null)
   const [form, setForm] = useState({ project_name: '', source_title: '', project_type: 'Light Novel', source_language: 'ja', target_language: 'zh' })
 
   const { data: projects = [], isLoading } = useQuery({
@@ -34,19 +37,24 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
       setShowCreate(false)
       setForm({ project_name: '', source_title: '', project_type: 'Light Novel', source_language: 'ja', target_language: 'zh' })
     },
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('projects.create.failed'))),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => projectsApi.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('projects.delete.failed'))),
   })
+
+  const isGeneric = form.project_type === 'Generic'
 
   const handleCreate = () => {
     if (!form.project_name.trim()) return
+    if (isGeneric && (!form.source_language.trim() || !form.target_language.trim())) return
     createMutation.mutate(form)
   }
 
-  const typeDisplay = (val: string) => val === 'Light Novel' ? t('projects.type.lightNovel') : val === 'Web Novel' ? t('projects.type.webNovel') : val
+  const typeDisplay = (val: string) => val === 'Light Novel' ? t('projects.type.lightNovel') : val === 'Web Novel' ? t('projects.type.webNovel') : val === 'Generic' ? t('projects.type.generic') : val
 
   if (isLoading) return <div className="p-8 text-center text-gray-500">{t('projects.loading')}</div>
 
@@ -172,11 +180,17 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('projects.create.type')}</label>
                 <select
                   value={form.project_type}
-                  onChange={e => setForm(f => ({ ...f, project_type: e.target.value }))}
+                  onChange={e => setForm(f => ({
+                    ...f,
+                    project_type: e.target.value,
+                    source_language: e.target.value === 'Generic' ? '' : 'ja',
+                    target_language: e.target.value === 'Generic' ? '' : 'zh',
+                  }))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="Light Novel">{t('projects.type.lightNovel')}</option>
                   <option value="Web Novel">{t('projects.type.webNovel')}</option>
+                  <option value="Generic">{t('projects.type.generic')}</option>
                 </select>
               </div>
               <div className="flex gap-4">
@@ -184,18 +198,24 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('projects.create.sourceLang')}</label>
                   <input
                     type="text"
+                    maxLength={40}
                     value={form.source_language}
+                    disabled={!isGeneric}
                     onChange={e => setForm(f => ({ ...f, source_language: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    placeholder={isGeneric ? t('projects.create.langPlaceholder') : 'ja'}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-60"
                   />
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('projects.create.targetLang')}</label>
                   <input
                     type="text"
+                    maxLength={40}
                     value={form.target_language}
+                    disabled={!isGeneric}
                     onChange={e => setForm(f => ({ ...f, target_language: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    placeholder={isGeneric ? t('projects.create.langPlaceholder') : 'zh'}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -204,7 +224,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
               <button onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">{t('projects.create.cancel')}</button>
               <button
                 onClick={handleCreate}
-                disabled={!form.project_name.trim() || createMutation.isPending}
+                disabled={!form.project_name.trim() || (isGeneric && (!form.source_language.trim() || !form.target_language.trim())) || createMutation.isPending}
                 className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {createMutation.isPending ? t('projects.create.submitting') : t('projects.create.submit')}
@@ -213,6 +233,8 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
           </div>
         </div>
       )}
+
+      {errorToast && <ErrorToast message={errorToast} onClose={() => setErrorToast(null)} />}
 
       <ConfirmDialog
         open={!!deleteConfirm}

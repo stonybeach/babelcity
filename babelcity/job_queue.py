@@ -32,6 +32,8 @@ class Job:
     progress_completed: int = 0
     progress_total: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     result_message: str = ""
 
 
@@ -120,6 +122,8 @@ class JobQueue:
             job = next((j for j in self._completed if j.id == job_id), None)
             if job:
                 job.status = JobStatus.PENDING
+                job.started_at = None
+                job.completed_at = None
                 self._completed.remove(job)
                 self._pending.append(job)
 
@@ -186,6 +190,8 @@ class JobQueue:
                     break  # No more jobs
                 job = self._pending.pop(0)
                 job.status = JobStatus.RUNNING
+                if job.started_at is None:
+                    job.started_at = datetime.utcnow()
                 self._running = job
 
             self._broadcast_status(job.id, job.status.value)
@@ -224,6 +230,7 @@ class JobQueue:
             # Move to completed
             with self._lock:
                 if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
+                    job.completed_at = datetime.utcnow()
                     self._completed.append(job)
                     self._running = None
 

@@ -18,6 +18,8 @@ from typing import Any
 
 router = APIRouter(prefix="/projects")
 
+VALID_PROJECT_TYPES = ("Light Novel", "Web Novel", "Generic")
+
 
 def get_db():
     with get_session() as session:
@@ -36,6 +38,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     project_name: Optional[str] = None
     source_title: Optional[str] = None
+    project_type: Optional[str] = None
     source_language: Optional[str] = None
     target_language: Optional[str] = None
 
@@ -89,13 +92,25 @@ def list_projects(db: Session = Depends(get_db)):
 
 @router.post("")
 def create_project(data: ProjectCreate, db: Session = Depends(get_db)):
+    if data.project_type not in VALID_PROJECT_TYPES:
+        raise HTTPException(400, f"Invalid project_type. Must be one of: {', '.join(VALID_PROJECT_TYPES)}")
+
+    if data.project_type == "Generic":
+        source_language = (data.source_language or "").strip()
+        target_language = (data.target_language or "").strip()
+        if not source_language or not target_language:
+            raise HTTPException(400, "Generic projects require non-empty source_language and target_language")
+    else:
+        source_language = "ja"
+        target_language = "zh"
+
     project = Project(
         id=str(uuid.uuid4()),
         project_name=data.project_name,
         source_title=data.source_title,
         project_type=data.project_type,
-        source_language=data.source_language,
-        target_language=data.target_language,
+        source_language=source_language,
+        target_language=target_language,
         glossary=data.glossary or {},
     )
     db.add(project)
@@ -158,14 +173,28 @@ def update_project(project_id: str, data: ProjectUpdate, db: Session = Depends(g
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
+    if data.project_type is not None and data.project_type != project.project_type:
+        raise HTTPException(400, "project_type cannot be changed after project creation")
     if data.project_name is not None:
         project.project_name = data.project_name
     if data.source_title is not None:
         project.source_title = data.source_title
     if data.source_language is not None:
-        project.source_language = data.source_language
+        if project.project_type == "Generic":
+            lang = data.source_language.strip()
+            if not lang:
+                raise HTTPException(400, "Generic projects require non-empty source_language and target_language")
+            project.source_language = lang
+        elif data.source_language != project.source_language:
+            raise HTTPException(400, "source_language cannot be changed for Light Novel / Web Novel projects")
     if data.target_language is not None:
-        project.target_language = data.target_language
+        if project.project_type == "Generic":
+            lang = data.target_language.strip()
+            if not lang:
+                raise HTTPException(400, "Generic projects require non-empty source_language and target_language")
+            project.target_language = lang
+        elif data.target_language != project.target_language:
+            raise HTTPException(400, "target_language cannot be changed for Light Novel / Web Novel projects")
     project.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(project)

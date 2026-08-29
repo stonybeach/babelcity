@@ -68,6 +68,8 @@ def list_jobs(status: Optional[str] = None, db: Session = Depends(get_db)):
             "total": j.progress_total,
             "message": j.result_message,
             "created_at": j.created_at,
+            "started_at": j.started_at,
+            "completed_at": j.completed_at,
         })
     return jobs
 

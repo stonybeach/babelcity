@@ -172,8 +172,11 @@ class GenericLanguageContextTest(unittest.TestCase):
     def test_generic_failure_checks_are_language_agnostic(self):
         self.assertTrue(has_literal_text_generic("한글"))
         self.assertTrue(has_literal_text_generic("Español"))
+        self.assertTrue(has_literal_text_generic("ー한글"))
         self.assertFalse(has_literal_text_generic("---"))
         self.assertFalse(has_literal_text_generic("123"))
+        self.assertFalse(has_literal_text_generic("ーーーーーー"))
+        self.assertFalse(has_literal_text_generic("ー 〜 ‥"))
 
         self.assertFalse(failed_translation_generic(["한글"], ["Spanish translation"]))
         self.assertTrue(failed_translation_generic(["한글"], [""]))

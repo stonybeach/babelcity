@@ -2,7 +2,7 @@
 
 Local Web Novel & EPUB Translation Organizer. Provides a web UI for managing translation projects, configuring LLM tasks, and running background translation/QA jobs.
 
-**Notes: currently only Japanese -> Chinese is supported.**
+**Notes: currently only the "Generic" Project Type supports different languages. "Light Novel" and "Web Novel" project types are specific for Japanese -> Chinese translation only.**
 
 ## Tech Stack
 
@@ -30,16 +30,12 @@ cd babelcity
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
-### 3. Frontend Setup
+### 3. Build the Application
 
 ```bash
-cd web
-npm install
-npm run build
-cd ..
+./build.sh
 ```
 
 ### 4. Start the Application

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { jobs as jobsApi, tasks as tasksApi, projects as projectsApi, chapters as chaptersApi } from '../services/api'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
+import { formatDuration } from '../utils/format'
 import { useJobWebSocket } from '../hooks/useJobWebSocket'
 import { type Job, type TaskDefinition, type Project } from '../types'
 import { useI18n } from '../i18n'
@@ -183,6 +184,7 @@ export const JobsPage: React.FC = () => {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.volume')}</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.status')}</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.progress')}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.duration')}</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">{t('jobs.table.actions')}</th>
             </tr>
           </thead>
@@ -222,6 +224,13 @@ export const JobsPage: React.FC = () => {
                     <span className="text-green-600 dark:text-green-400">{t('jobs.progress.done')}</span>
                   ) : j.status === 'Failed' ? (
                     <span className="text-red-600 dark:text-red-400" title={j.result_message || 'Error'}>{t('jobs.progress.failed')}</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                  {(j.status === 'Completed' || j.status === 'Failed') ? (
+                    <span className="font-mono">{formatDuration(j.started_at, j.completed_at)}</span>
                   ) : (
                     <span className="text-gray-400">-</span>
                   )}

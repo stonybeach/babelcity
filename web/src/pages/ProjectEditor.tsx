@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorToast } from '../components/ErrorToast'
 import { type Project } from '../types'
 import { useI18n } from '../i18n'
+import { getApiErrorMessage } from '../utils/errors'
 
 interface ProjectEditorProps {
   projectId: string
@@ -33,6 +34,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
   const updateProject = useMutation({
     mutationFn: (data: any) => projectsApi.update(projectId, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('editor.update.failed'))),
   })
 
   const addVolume = useMutation({
@@ -42,6 +44,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
       setShowAddVolume(false)
       setVolumeForm({ volume_number: '', source_volume_title: '', target_volume_title: '' })
     },
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('editor.volume.add.failed'))),
   })
 
   const removeVolume = useMutation({
@@ -51,6 +54,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
       queryClient.invalidateQueries({ queryKey: ['project', projectId] })
       setDeleteVolumeConfirm(null)
     },
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('editor.volume.remove.failed'))),
   })
 
   const importEpub = useMutation({
@@ -64,18 +68,22 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
       setUploadDialog(null)
       setSelectedFile(null)
     },
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('editor.upload.failed'))),
   })
 
   const updateVolumeTitle = useMutation({
     mutationFn: ({ volumeNumber, data }: { volumeNumber: string; data: any }) =>
       projectsApi.updateVolume(projectId, volumeNumber, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+    onError: (err: any) => setErrorToast(getApiErrorMessage(err, t('editor.volume.update.failed'))),
   })
 
-  const typeDisplay = (val: string) => val === 'Light Novel' ? t('projects.type.lightNovel') : val === 'Web Novel' ? t('projects.type.webNovel') : val
+  const typeDisplay = (val: string) => val === 'Light Novel' ? t('projects.type.lightNovel') : val === 'Web Novel' ? t('projects.type.webNovel') : val === 'Generic' ? t('projects.type.generic') : val
 
   if (isLoading) return <div className="p-8 text-center text-gray-500">{t('editor.loading')}</div>
   if (!project) return <div className="p-8 text-center text-red-500">{t('editor.notFound')}</div>
+
+  const isGeneric = project.project_type === 'Generic'
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -139,29 +147,56 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.projectType')}</label>
             <select
               value={project.project_type}
-              onChange={e => updateProject.mutate({ project_type: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              disabled
+              onChange={() => {}}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-60"
             >
+              {!['Light Novel', 'Web Novel', 'Generic'].includes(project.project_type) && (
+                <option value={project.project_type}>{typeDisplay(project.project_type)}</option>
+              )}
               <option value="Light Novel">{t('projects.type.lightNovel')}</option>
               <option value="Web Novel">{t('projects.type.webNovel')}</option>
+              <option value="Generic">{t('projects.type.generic')}</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.sourceLang')}</label>
             <input
               type="text"
+              maxLength={40}
               defaultValue={project.source_language}
-              onBlur={e => updateProject.mutate({ source_language: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              disabled={!isGeneric}
+              onBlur={e => {
+                const value = e.target.value.trim()
+                if (!value) {
+                  setErrorToast(t('projects.create.langEmpty'))
+                  e.target.value = project.source_language || ''
+                  return
+                }
+                updateProject.mutate({ source_language: value })
+              }}
+              placeholder={isGeneric ? t('projects.create.langPlaceholder') : 'ja'}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-60"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('editor.field.targetLang')}</label>
             <input
               type="text"
+              maxLength={40}
               defaultValue={project.target_language}
-              onBlur={e => updateProject.mutate({ target_language: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              disabled={!isGeneric}
+              onBlur={e => {
+                const value = e.target.value.trim()
+                if (!value) {
+                  setErrorToast(t('projects.create.langEmpty'))
+                  e.target.value = project.target_language || ''
+                  return
+                }
+                updateProject.mutate({ target_language: value })
+              }}
+              placeholder={isGeneric ? t('projects.create.langPlaceholder') : 'zh'}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 disabled:opacity-60"
             />
           </div>
         </div>
@@ -169,7 +204,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div className="flex items-center gap-3 mb-4">
-          {project.project_type === 'Light Novel' && (
+          {project.project_type !== 'Web Novel' && (
             <button
               onClick={() => setShowAddVolume(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -232,7 +267,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ projectId, onBack,
                     >
                       <Upload size={16} />
                     </button>
-                    {project.project_type === 'Light Novel' && (
+                    {project.project_type !== 'Web Novel' && (
                       <button
                         onClick={() => setDeleteVolumeConfirm(v.volume_number)}
                         className="p-2 text-gray-500 hover:text-red-600"

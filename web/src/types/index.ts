@@ -63,6 +63,8 @@ export interface Job {
   message: string
   result_message: string
   created_at: string
+  started_at?: string | null
+  completed_at?: string | null
 }
 
 export interface FileItem {
