@@ -1,3 +1,3 @@
 #! /bin/bash
 
-./.venv/bin/python -m babelcity.main
+./.venv/bin/python -m babelcity.main $*
