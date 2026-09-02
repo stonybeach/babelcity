@@ -1,13 +1,12 @@
 """SQLAlchemy ORM models for Babel City."""
 
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     Boolean, Column, Float, ForeignKey, Integer, LargeBinary, String, Text, DateTime, UniqueConstraint, CheckConstraint, JSON
 )
 
-from .database import Base
+from .database import Base, utcnow
 
 
 class Project(Base):
@@ -23,8 +22,8 @@ class Project(Base):
     source_language = Column(String(40), nullable=False, default="ja")
     target_language = Column(String(40), nullable=False, default="zh")
     glossary = Column(JSON, nullable=False, default=dict)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class BookVolume(Base):
@@ -38,8 +37,8 @@ class BookVolume(Base):
     volume_number = Column(String(20), nullable=False)
     source_volume_title = Column(String(255), nullable=True)
     target_volume_title = Column(String(255), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class FileItem(Base):
@@ -57,7 +56,7 @@ class FileItem(Base):
     spine_order = Column(Integer, nullable=True, default=None)
     glossary_scanned = Column(Boolean, nullable=False, default=False)
     obsolete = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
 
 
 class ItemTranslation(Base):
@@ -107,5 +106,5 @@ class TaskDefinition(Base):
     retry_attempts = Column(Integer, nullable=False, default=2)
     override_system_prompt = Column(Text, nullable=True)
     is_default = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

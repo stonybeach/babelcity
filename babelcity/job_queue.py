@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from .database import utcnow
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +33,7 @@ class Job:
     status: JobStatus = JobStatus.PENDING
     progress_completed: int = 0
     progress_total: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utcnow)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     result_message: str = ""
@@ -191,7 +193,7 @@ class JobQueue:
                 job = self._pending.pop(0)
                 job.status = JobStatus.RUNNING
                 if job.started_at is None:
-                    job.started_at = datetime.utcnow()
+                    job.started_at = utcnow()
                 self._running = job
 
             self._broadcast_status(job.id, job.status.value)
@@ -230,7 +232,7 @@ class JobQueue:
             # Move to completed
             with self._lock:
                 if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-                    job.completed_at = datetime.utcnow()
+                    job.completed_at = utcnow()
                     self._completed.append(job)
                     self._running = None
 

@@ -1,7 +1,6 @@
 """Project CRUD, volume management, EPUB import/export."""
 
 import uuid
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile
@@ -9,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..database import get_session
+from ..database import get_session, utcnow
 from ..models import Project, BookVolume, FileItem, ItemTranslation
 from .. import epub_handler
 from pydantic import BaseModel
@@ -195,7 +194,7 @@ def update_project(project_id: str, data: ProjectUpdate, db: Session = Depends(g
             project.target_language = lang
         elif data.target_language != project.target_language:
             raise HTTPException(400, "target_language cannot be changed for Light Novel / Web Novel projects")
-    project.updated_at = datetime.utcnow()
+    project.updated_at = utcnow()
     db.commit()
     db.refresh(project)
     return {"id": project.id, "message": "Project updated"}
@@ -255,7 +254,7 @@ def update_volume(
         volume.source_volume_title = data.source_volume_title
     if data.target_volume_title is not None:
         volume.target_volume_title = data.target_volume_title
-    volume.updated_at = datetime.utcnow()
+    volume.updated_at = utcnow()
     db.commit()
     return {"message": "Volume updated"}
 

@@ -2,6 +2,7 @@
 
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from threading import local
 
 import sqlalchemy
@@ -11,6 +12,11 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 DB_PATH = os.environ.get("BABELCITY_DB", os.path.join(os.path.dirname(os.path.dirname(__file__)), "babelcity.db"))
 
 _thread_local = local()
+
+
+def utcnow() -> datetime:
+    """Return a naive UTC datetime (drop-in for deprecated datetime.utcnow())."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def get_engine():

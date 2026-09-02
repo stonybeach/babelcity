@@ -5,7 +5,7 @@ import zlib
 from datetime import datetime
 from typing import Optional, Dict, Any, Tuple, List, Union, Callable
 
-from .database import get_session
+from .database import get_session, utcnow
 from .models import FileItem, ItemTranslation, Project, BookVolume, TaskDefinition
 from .glossary_processor import scan_for_entities, merge_glossary
 from .llm_handler import normalize_llm_config
@@ -91,6 +91,7 @@ def save_or_update_translation(
     qa_round: int,
     content: bytes,
     qa_model: Optional[str] = None,
+    start_time: Optional[datetime] = None,
 ) -> None:
     """Save or update an ItemTranslation record in the database.
 
@@ -101,6 +102,8 @@ def save_or_update_translation(
         qa_round: The index of the QA round (0 for initial translation).
         content: Zlib-compressed translated content bytes.
         qa_model: Optional name of the model that executed the QA.
+        start_time: Timestamp captured when processing of this page began.
+            Used as last_translation_start; defaults to save time if omitted.
     """
     existing = session.query(ItemTranslation).filter_by(
         item_id=item_id,
@@ -108,10 +111,11 @@ def save_or_update_translation(
         qa_round=qa_round,
     ).first()
 
-    now = datetime.utcnow()
+    now = utcnow()
+    start = start_time or now
     if existing:
         existing.content = content
-        existing.last_translation_start = now
+        existing.last_translation_start = start
         existing.last_translation_end = now
         existing.qa_model = qa_model
     else:
@@ -120,7 +124,7 @@ def save_or_update_translation(
             model_type=model_type,
             qa_round=qa_round,
             content=content,
-            last_translation_start=now,
+            last_translation_start=start,
             last_translation_end=now,
             qa_model=qa_model,
         )
@@ -255,6 +259,7 @@ def _translate_nav_items(
     for nav in nav_items:
         if should_stop_callback and should_stop_callback():
             raise JobPausedException("Job queue paused during Nav translation")
+        start_time = utcnow()
         text = _decompress_content(nav.content)
         modified_nav = process_toc(text, config_dict.get("chunk_size", 12), effective_heading_map, glossary, config_dict)
 
@@ -267,6 +272,7 @@ def _translate_nav_items(
                 qa_round=qa_round,
                 content=compressed,
                 qa_model=qa_model,
+                start_time=start_time,
             )
 
 
@@ -419,11 +425,12 @@ def execute_translation_job(job, progress_callback, should_stop_callback=None, s
     progress_callback(0, total)
 
     def process_chapter(ch):
+        start_time = utcnow()
         text = _decompress_content(ch.content)
         modified_xml, heading_map = process_document(
             text, glossary, llm_config, should_stop=should_stop_callback
         )
-        return ch, modified_xml, heading_map
+        return ch, modified_xml, heading_map, start_time
 
     if threads > 1:
         # Multi-threaded translation using ThreadPoolExecutor
@@ -440,7 +447,7 @@ def execute_translation_job(job, progress_callback, should_stop_callback=None, s
                     raise JobPausedException("Job queue paused during translation")
                 ch = futures[future]
                 try:
-                    _, modified_xml, heading_map = future.result()
+                    _, modified_xml, heading_map, start_time = future.result()
                     if modified_xml:
                         compressed = _compress_content(modified_xml)
                         with get_session() as save_session:
@@ -451,6 +458,7 @@ def execute_translation_job(job, progress_callback, should_stop_callback=None, s
                                 qa_round=0,
                                 content=compressed,
                                 qa_model=None,
+                                start_time=start_time,
                             )
                     if heading_map:
                         with counter_lock:
@@ -468,7 +476,7 @@ def execute_translation_job(job, progress_callback, should_stop_callback=None, s
         for ch in chapters:
             if should_stop_callback and should_stop_callback():
                 raise JobPausedException("Job queue paused during translation")
-            _, modified_xml, heading_map = process_chapter(ch)
+            _, modified_xml, heading_map, start_time = process_chapter(ch)
             if modified_xml:
                 compressed = _compress_content(modified_xml)
                 save_or_update_translation(
@@ -478,6 +486,7 @@ def execute_translation_job(job, progress_callback, should_stop_callback=None, s
                     qa_round=0,
                     content=compressed,
                     qa_model=None,
+                    start_time=start_time,
                 )
             if heading_map:
                 aggregated_heading_map.update(heading_map)
@@ -528,11 +537,13 @@ def execute_qa_job(job, progress_callback, should_stop_callback=None, session=No
     progress_callback(0, num_passes * total_chapters)
 
     def process_single(args):
-        item_id, content = args
+        item_id, compressed_content = args
+        start_time = utcnow()
+        content = _decompress_content(compressed_content)
         modified, heading_map = process_qa_document(
             content, glossary, qa_config, should_stop=should_stop_callback
         )
-        return (item_id, modified, heading_map)
+        return (item_id, modified, heading_map, start_time)
 
     for pass_idx in range(num_passes):
         qa_round = start_version + pass_idx + 1
@@ -560,11 +571,10 @@ def execute_qa_job(job, progress_callback, should_stop_callback=None, session=No
             print(f"      [!] No translations found for qa_round {prev_round}. Skipping pass {pass_idx}.")
             continue
 
-        # Prepare chapter items for QA
+        # Prepare chapter items for QA (decompression happens inside the worker)
         chapter_items = []
         for trans in prev_translations:
-            text = _decompress_content(trans.content)
-            chapter_items.append((trans.item_id, text))
+            chapter_items.append((trans.item_id, trans.content))
 
         total = len(chapter_items)
         results = []
@@ -593,7 +603,7 @@ def execute_qa_job(job, progress_callback, should_stop_callback=None, session=No
                     except Exception as e:
                         item_id, _ = futures[future]
                         print(f"Error processing item {item_id}: {e}")
-                        results.append((item_id, content, {}))
+                        results.append((item_id, None, {}, None))
 
                     with counter_lock:
                         processed += 1
@@ -608,16 +618,16 @@ def execute_qa_job(job, progress_callback, should_stop_callback=None, session=No
                 except JobPausedException:
                     raise
                 except Exception as e:
-                    item_id, content = item
+                    item_id, _ = item
                     print(f"Error processing item {item_id}: {e}")
-                    results.append((item_id, content, {}))
+                    results.append((item_id, None, {}, None))
                 processed += 1
                 progress_callback(pass_idx * total_chapters + processed, num_passes * total_chapters)
 
         # Save QA results & aggregate heading maps
         qa_model_name = config.model_type or config.config_name
         aggregated_heading_map = {}
-        for item_id, modified_xml, heading_map in results:
+        for item_id, modified_xml, heading_map, start_time in results:
             if modified_xml:
                 compressed = _compress_content(modified_xml)
                 save_or_update_translation(
@@ -627,6 +637,7 @@ def execute_qa_job(job, progress_callback, should_stop_callback=None, session=No
                     qa_round=qa_round,
                     content=compressed,
                     qa_model=qa_model_name,
+                    start_time=start_time,
                 )
             if heading_map:
                 aggregated_heading_map.update(heading_map)
