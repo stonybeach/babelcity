@@ -134,7 +134,9 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
 
   const chapterHtml = React.useMemo(() => {
     if (!chapterHtmlRaw) return null
-    if (!isDark) return chapterHtmlRaw
+
+    const sanitizedHtml = chapterHtmlRaw.replace(/<script([^>]*)\/>/gi, '<script$1></script>');
+    if (!isDark) return sanitizedHtml
 
     const darkModeCss = `<style>
       body, html { background-color: #1f2937 !important; color: #e5e7eb !important; }
@@ -142,11 +144,11 @@ export const BookViewer: React.FC<BookViewerProps> = ({ projectId, volumeId, onB
       a { color: #60a5fa !important; }
     </style>`
 
-    if (chapterHtmlRaw.includes('</body>'))
-      return chapterHtmlRaw.replace('</body>', darkModeCss + '</body>')
-    if (chapterHtmlRaw.includes('</html>'))
-      return chapterHtmlRaw.replace('</html>', darkModeCss + '</html>')
-    return darkModeCss + chapterHtmlRaw
+    if (sanitizedHtml.includes('</body>'))
+      return sanitizedHtml.replace('</body>', darkModeCss + '</body>')
+    if (sanitizedHtml.includes('</html>'))
+      return sanitizedHtml.replace('</html>', darkModeCss + '</html>')
+    return darkModeCss + sanitizedHtml
   }, [chapterHtmlRaw, isDark])
 
   const downloadEpub = useMutation({
